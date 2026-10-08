@@ -29,6 +29,7 @@ public:
     std::optional<CredentialRecord> find(const QString &rpId, const QByteArray &credentialId) override;
     QList<CredentialRecord> findByRp(const QString &rpId) override;
     QList<CredentialMetadata> listAll() override;
+    QList<CredentialRecord> allRecords() override;
     bool remove(const QString &credentialIdB64) override;
 
 Q_SIGNALS:

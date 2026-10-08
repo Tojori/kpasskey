@@ -93,7 +93,15 @@ private Q_SLOTS:
 
     void replayIsDetectableViaCounter()
     {
-        create(QStringLiteral("example.com"));
+        // Only device-bound (TPM) credentials have a counter; exportable ones
+        // keep 0 as CXF requires and rely on the challenge (see above).
+        FakeHardwareKeyStore hw;
+        Authenticator::Options o;
+        o.hardwareKeys = &hw;
+        o.createInHardware = true;
+        Authenticator tpmAuth(&store, &prompter, &verifier, o);
+        QCOMPARE(status(run(tpmAuth, ctap::MakeCredential, makeCredentialParams(QStringLiteral("example.com"), "user-1", cdh))), ctap::Ok);
+        Authenticator *auth = &tpmAuth;
         const QByteArray r1 = run(*auth, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh));
         const QByteArray r2 = run(*auth, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh));
         const quint32 c1 = parseAuthData(body(r1).value(2).toByteArray()).counter;

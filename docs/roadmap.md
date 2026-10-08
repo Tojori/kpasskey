@@ -31,9 +31,10 @@
 
 ## Phase 3b – Sicherung und Wiederherstellung ohne Hardware-Bindung
 Seit 2026-10-08 ist `software` der Standard und TPM opt-in, weil gerätegebundene Schlüssel bei Hardwaredefekt verloren gehen.
-1. **Verschlüsselter Export/Import** im FIDO-Format **CXF** (Credential Exchange Format, seit 08/2025 FIDO Proposed Standard). Später die Übertragung zwischen Anbietern per **CXP** (HPKE-verschlüsselt; Standardisierung für 2026 geplant). Nur nach UV, Export-Datei mit starker Passphrase (Argon2id/scrypt über OpenSSL) verschlüsselt.
+1. ✅ **Verschlüsselter Export/Import** im FIDO-Format **CXF** (Credential Exchange Format, seit 08/2025 FIDO Proposed Standard). Später die Übertragung zwischen Anbietern per **CXP** (HPKE-verschlüsselt; Standardisierung für 2026 geplant). Nur nach UV, Export-Datei mit starker Passphrase (Argon2id/scrypt über OpenSSL) verschlüsselt.
 2. **Optionaler Mittelweg „TPM + Wiederherstellungscode“**: Der private Schlüssel wird doppelt verschlüsselt im Wallet abgelegt, einmal mit einem TPM-versiegelten Datenschlüssel (Alltag) und einmal mit einem einmalig angezeigten Wiederherstellungscode (Notfall). Das schützt gegen Offline-Diebstahl und ist bei TPM-Verlust trotzdem wiederherstellbar. Nachteil gegenüber reinem TPM: Der Schlüssel ist bei der Signatur kurz im Speicher von kpasskeyd.
-3. **BE-Flag ehrlich setzen**: Exportierbare Credentials dürfen `BE=1` (backup eligible) melden. Das ist eine bewusste Entscheidung, weil manche RPs BE=0 als „gerätegebunden“ werten.
+3. ✅ **BE-Flag ehrlich gesetzt**: Software-Passkeys melden `BE=1` und Zähler 0 (CXF-Vorgabe), TPM-Passkeys `BE=0` mit Zähler.
+5. Offen: Export/Import aus einer KCM statt per `busctl`; CXP (Anbieter-zu-Anbieter), sobald standardisiert; optional Klartext-CXF für Passwortmanager, die nur Dateien importieren.
 4. Doku für Nutzer: pro Konto immer einen zweiten Anmeldeweg (zweiter Authenticator oder Wiederherstellungscodes der Website).
 
 ## Phase 4 – Standardpfad credentialsd / Freedesktop

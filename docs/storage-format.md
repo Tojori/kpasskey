@@ -90,6 +90,31 @@ Nur bei ausdrücklichem `--key-backend=tpm` entstehen neue Schlüssel **im TPM**
 - Validierung beim Laden: Das Blob wird mit `tss2-mu` entpackt. Geprüft werden Typ ECC P-256, ECDSA/SHA-256, `fixedTPM`/`fixedParent`/`sign`, nicht `restricted`/`decrypt`, und der öffentliche Punkt muss byte-gleich mit `public_key_cose` sein.
 - Wallet-geschützte Einträge bleiben bei **Schema 1**. Ältere Builds lesen sie weiter und überspringen v2-Einträge, ohne sie anzufassen.
 
+## Backup: CXF-Export und -Import
+
+**Inhalt [Standard]:** FIDO **Credential Exchange Format (CXF) 1.0**, Proposed Standard mit Errata vom 2026-03-09 (<https://fidoalliance.org/specs/cx/cxf-v1.0-ps-errata-20260309.html>). Erzeugt wird ein `Header` mit `version {1,0}`, `exporterRpId`, `exporterDisplayName`, `timestamp` und genau einem `Account` (leere `username`/`email`, `collections: []`). Darin steht ein `Item` je Passkey (`title` = RP-Name bzw. RP-ID) mit einer Credential vom Typ `passkey`: `credentialId`, `rpId`, `username`, `userDisplayName`, `userHandle` und `key` (PKCS#8 DER, base64url).
+
+- **Signaturzähler:** CXF §3.3.12 verlangt, dass Passkeys mit Zähler ≠ 0 *nicht* exportiert werden und Importeure den Zähler auf 0 setzen und nie erhöhen. Deshalb gilt seit 2026-10-08: Software-Passkeys sind **backup eligible** (`BE=1`, `backup_eligible: true`) und behalten den Zähler 0. TPM-Passkeys sind gerätegebunden (`BE=0`), zählen weiter und werden nie exportiert.
+- `exporterRpId` ist mangels eigener Domain der reservierte Platzhalter `kpasskey.invalid`.
+- **Import:** Nur der Typ `passkey` wird übernommen; andere Typen (Passwörter, TOTP, Notizen) werden gezählt und ignoriert (§2.1.1). Unterstützt werden ES256 (P-256) und EdDSA (Ed25519). Fremde Credential-IDs von 16 bis 1023 Byte sind erlaubt. Vorhandene Einträge (gleiche RP-ID und Credential-ID) werden übersprungen.
+
+**Verschlüsselung [projektspezifisch]:** CXF ist Klartext, und CXP (HPKE-Übertragung zwischen Anbietern) ist noch Entwurf. Die Backup-Datei (`*.kpasskey-backup`, Rechte 0600) ist deshalb ein eigener Container um das unveränderte CXF-JSON:
+
+```json
+{
+  "format": "kpasskey-backup", "version": 1,
+  "payload": "application/fido.cxf+json; version=1.0",
+  "kdf": { "alg": "argon2id", "salt": "<16 B>", "iterations": 3, "memoryKiB": 65536, "lanes": 1 },
+  "cipher": { "alg": "A256GCM", "nonce": "<12 B>" },
+  "ciphertext": "<AES-256-GCM(CXF-JSON) || Tag>"
+}
+```
+
+- Schlüssel = Argon2id(Passphrase in NFC, Salt), 32 Byte (OpenSSL 3.2+). Passphrase mindestens 12 Zeichen; der Dialog bietet eine generierte (25 Zeichen Crockford-Base32, 125 Bit).
+- Alle Felder außer `ciphertext` sind als AAD authentifiziert (kanonische, sortierte JSON-Serialisierung).
+- Beim Import gelten Obergrenzen (≤ 10 Iterationen, ≤ 1 GiB, ≤ 8 Lanes) und Untergrenzen (≥ 19 MiB), damit eine präparierte Datei weder Speicher noch Rechenzeit erschöpft.
+- Wer die Datei in einen anderen Passwortmanager übernehmen will, braucht das entschlüsselte CXF-JSON. Ein „Klartext-Export“ ist bewusst nicht eingebaut, bis CXP verfügbar ist.
+
 ## Migration und Versionierung
 
 - `schema > 1` (von einer neueren Version geschrieben): Der Eintrag wird **nicht angefasst** (`UnsupportedSchema`), damit kein Downgrade Daten zerstört.

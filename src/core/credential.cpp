@@ -113,7 +113,7 @@ QString encode(const CredentialRecord &r)
     o.insert(QLatin1String(kSignCount), qint64(r.signCount));
     o.insert(QLatin1String(kDiscoverable), r.discoverable);
     o.insert(QLatin1String(kUvAtCreation), r.uvAtCreation);
-    o.insert(QLatin1String(kBackupEligible), false);
+    o.insert(QLatin1String(kBackupEligible), r.backupEligible);
     o.insert(QLatin1String(kCreated), r.created.toUTC().toString(Qt::ISODate));
     if (r.lastUsed.isValid()) {
         o.insert(QLatin1String(kLastUsed), r.lastUsed.toUTC().toString(Qt::ISODate));
@@ -170,7 +170,7 @@ std::optional<CredentialRecord> decode(const QString &key, const QString &json, 
         return fail(DecodeError::Malformed);
     }
     const double c = count.toDouble();
-    if (c < 0 || c > 4294967295.0 || credId->size() != ctap::CredentialIdSize || userHandle->isEmpty()
+    if (c < 0 || c > 4294967295.0 || credId->size() < ctap::MinCredentialIdSize || credId->size() > ctap::MaxCredentialIdSize || userHandle->isEmpty()
         || userHandle->size() > ctap::MaxUserIdSize || !crypto::isSupportedAlg(alg.toInt())) {
         return fail(DecodeError::Malformed);
     }
@@ -188,6 +188,10 @@ std::optional<CredentialRecord> decode(const QString &key, const QString &json, 
     r.signCount = quint32(c);
     r.discoverable = o.value(QLatin1String(kDiscoverable)).toBool(true);
     r.uvAtCreation = o.value(QLatin1String(kUvAtCreation)).toBool(false);
+    r.backupEligible = o.value(QLatin1String(kBackupEligible)).toBool(false);
+    if (r.backupEligible && r.keyProtection == protection::Tpm2) {
+        return fail(DecodeError::Inconsistent); // TPM keys can never be exported
+    }
     r.created = QDateTime::fromString(o.value(QLatin1String(kCreated)).toString(), Qt::ISODate);
     r.lastUsed = QDateTime::fromString(o.value(QLatin1String(kLastUsed)).toString(), Qt::ISODate);
 

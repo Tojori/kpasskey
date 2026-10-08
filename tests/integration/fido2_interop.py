@@ -106,7 +106,8 @@ def main():
     auth_data = server.register_complete(state, reg)
     cred = auth_data.credential_data
     check(auth_data.is_user_verified() and auth_data.is_user_present(), "registration verified by RP, UP+UV set")
-    check(not auth_data.is_backup_eligible(), "BE=0 (device-bound credential)")
+    check(auth_data.is_backup_eligible() and not auth_data.is_backed_up(),
+          "BE=1, BS=0 (software key, exportable via CXF)")
 
     # --- excludeCredentials ---
     options, state = server.register_begin(user, credentials=[cred])
@@ -117,15 +118,14 @@ def main():
         check(e.code == ClientError.ERR.DEVICE_INELIGIBLE, "excludeCredentials -> already registered")
 
     # --- discoverable login (empty allowCredentials), counter monotonic ---
-    last = -1
     for i in range(3):
         options, state = server.authenticate_begin(user_verification=UserVerificationRequirement.REQUIRED)
         result = client.get_assertion(options.public_key)
         response = result.get_response(0)
         server.authenticate_complete(state, [cred], response)
         counter = response.response.authenticator_data.counter
-        check(counter > last, f"assertion {i + 1} verified by RP, counter {counter} increases")
-        last = counter
+        # CXF: exportable passkeys keep the signature counter at 0
+        check(counter == 0, f"assertion {i + 1} verified by RP, counter stays 0")
     check(response.response.user_handle == user.id, "userHandle returned for discoverable login")
 
     # --- allowCredentials login ---

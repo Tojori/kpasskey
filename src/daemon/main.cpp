@@ -45,6 +45,10 @@ int main(int argc, char **argv)
 
     QApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(false);
+    // A daemon must not quit when the last QEventLoopLocker goes away (KDE's
+    // file dialogs / KIO jobs hold one; observed: exit after closing the
+    // export file dialog).
+    app.setQuitLockEnabled(false);
     KLocalizedString::setApplicationDomain("kpasskey");
     app.setApplicationName(QStringLiteral("kpasskeyd"));
     app.setApplicationVersion(QStringLiteral(KPASSKEY_VERSION));

@@ -44,6 +44,8 @@ add_library(kpasskeycore STATIC
     src/core/logging.cpp
     src/core/pin_uv.cpp
     src/core/hardware_keys.cpp
+    src/core/cxf.cpp
+    src/core/backup.cpp
     src/hid/ctaphid.cpp
 )
 target_include_directories(kpasskeycore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -67,6 +69,7 @@ if(KPASSKEY_BUILD_DAEMON)
         src/tpm/tpm_client.cpp
         src/kwallet/kwallet_store.cpp
         src/ui/presence_dialog.cpp
+        src/ui/backup_dialogs.cpp
         src/verification/polkit_verifier.cpp
     )
     target_link_libraries(kpasskeyd PRIVATE

@@ -44,6 +44,11 @@ public Q_SLOTS:
     // Requires fresh user verification (polkit) before deleting.
     Q_SCRIPTABLE void DeleteCredential(const QString &credentialId);
     Q_SCRIPTABLE QVariantMap GetStatus();
+    // Encrypted CXF backup. Only *triggers* the operation: user verification,
+    // file choice and passphrase are handled by kpasskeyd's own dialogs, so no
+    // key material or passphrase ever crosses D-Bus. Returns a summary.
+    Q_SCRIPTABLE QVariantMap ExportCredentials();
+    Q_SCRIPTABLE QVariantMap ImportCredentials();
 
 Q_SIGNALS:
     Q_SCRIPTABLE void CredentialsChanged();
@@ -52,6 +57,7 @@ private:
     CredentialStore *m_store;
     UserVerifier *m_verifier;
     Authenticator *m_authenticator;
+    bool m_backupRunning = false;
 };
 
 } // namespace kpasskey

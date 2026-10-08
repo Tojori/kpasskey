@@ -543,7 +543,7 @@ void Authenticator::makeCredential(const QCborMap &params)
         }
         for (const QCborValue &entry : exclude.toArray()) {
             const QByteArray id = entry.toMap().value(QLatin1String("id")).toByteArray();
-            if (id.size() == CredentialIdSize && m_store->find(p->rpId, id)) {
+            if (id.size() >= MinCredentialIdSize && id.size() <= MaxCredentialIdSize && m_store->find(p->rpId, id)) {
                 PresenceRequest req;
                 req.kind = PresenceRequest::Kind::Excluded;
                 req.rpId = p->rpId;
@@ -598,6 +598,9 @@ void Authenticator::makeCredentialConfirmed(const std::shared_ptr<Pending> &p)
     r.signCount = 0;
     r.discoverable = p->rk;
     r.uvAtCreation = p->uv;
+    // Software keys are exportable (CXF backup) and therefore backup eligible;
+    // TPM keys are device-bound.
+    r.backupEligible = r.keyProtection == protection::Wallet;
     r.created = QDateTime::currentDateTimeUtc();
 
     // A new discoverable credential replaces an existing one for the same account.
@@ -620,7 +623,10 @@ void Authenticator::makeCredentialConfirmed(const std::shared_ptr<Pending> &p)
         m_store->remove(id);
     }
 
-    quint8 flags = FlagUP | FlagAT; // BE/BS stay 0: KWallet credentials are device-bound
+    quint8 flags = FlagUP | FlagAT;
+    if (r.backupEligible) {
+        flags |= FlagBE; // BS stays 0: we cannot know whether the user made a backup
+    }
     if (p->uv) {
         flags |= FlagUV;
     }
@@ -723,8 +729,8 @@ void Authenticator::getAssertion(const QCborMap &params)
                 continue;
             }
             const QByteArray id = d.value(QLatin1String("id")).toByteArray();
-            if (id.size() != CredentialIdSize || seen.contains(id)) {
-                continue; // not one of ours (wrong size), or duplicate
+            if (id.size() < MinCredentialIdSize || id.size() > MaxCredentialIdSize || seen.contains(id)) {
+                continue; // cannot be one of ours, or duplicate
             }
             seen.insert(id);
             if (auto r = m_store->find(p->rpId, id)) {
@@ -785,11 +791,15 @@ void Authenticator::getAssertionConfirmed(const std::shared_ptr<Pending> &p, int
         return;
     }
     CredentialRecord r = std::move(*fresh);
-    if (r.signCount == std::numeric_limits<quint32>::max()) {
-        finish(ErrOther); // never wrap the counter
-        return;
+    if (!r.backupEligible) {
+        if (r.signCount == std::numeric_limits<quint32>::max()) {
+            finish(ErrOther); // never wrap the counter
+            return;
+        }
+        r.signCount += 1;
     }
-    r.signCount += 1;
+    // Backup-eligible credentials keep the counter at 0 (CXF requirement); the
+    // record is still rewritten to persist last_used.
     r.lastUsed = QDateTime::currentDateTimeUtc();
     // Persist the incremented counter BEFORE the signature leaves the daemon,
     // so a crash can never cause a counter value to be used twice.
@@ -799,7 +809,7 @@ void Authenticator::getAssertionConfirmed(const std::shared_ptr<Pending> &p, int
         return;
     }
 
-    quint8 flags = 0;
+    quint8 flags = r.backupEligible ? quint8(FlagBE) : quint8(0);
     if (p->up) {
         flags |= FlagUP;
     }

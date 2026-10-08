@@ -28,6 +28,8 @@ Daraus folgt **[projektspezifisch]**:
 | `ListCredentials(s rp_id) → a(sssxx)` | in: RP-ID oder `""` für alle; out: `(credential_id_b64url, rp_id, user_name, created_unix, last_used_unix)` | Nur Metadaten, niemals Schlüssel oder User-Handles | jeder Prozess der Sitzung |
 | `DeleteCredential(s credential_id)` | in: Credential-ID (base64url) | Löscht nach **frischer UV** (polkit `org.kde.kpasskey.verify-user`) | UV erforderlich |
 | `GetStatus() → a{sv}` | `version`, `busy`, `user_verification`, `storage` | Diagnose | jeder Prozess der Sitzung |
+| `ExportCredentials() → a{sv}` | out: `exported`, `skipped_hardware_bound`, `skipped_nonzero_counter`, `path` | **Löst nur aus:** UV, Dateiauswahl und Passphrase laufen über die Dialoge von kpasskeyd. Schlüssel und Passphrase kommen nie auf den Bus. Schreibt ein verschlüsseltes CXF-Backup (siehe `storage-format.md`). | UV erforderlich |
+| `ImportCredentials() → a{sv}` | out: `imported`, `skipped_existing`, `skipped_invalid`, `skipped_other_types` | wie oben, liest ein Backup ein | UV erforderlich |
 
 ### Signale
 
@@ -42,7 +44,9 @@ Daraus folgt **[projektspezifisch]**:
 | `org.kde.kpasskey.Error.NotFound` | Credential-ID unbekannt |
 | `org.kde.kpasskey.Error.NotAuthorized` | UV fehlgeschlagen oder abgebrochen |
 | `org.kde.kpasskey.Error.WalletUnavailable` | KWallet deaktiviert oder Öffnen abgelehnt |
-| `org.kde.kpasskey.Error.Busy` | Eine WebAuthn-Zeremonie läuft gerade |
+| `org.kde.kpasskey.Error.Busy` | Eine WebAuthn-Zeremonie oder ein Backup läuft gerade |
+| `org.kde.kpasskey.Error.Cancelled` | Datei- oder Passphrase-Dialog abgebrochen |
+| `org.kde.kpasskey.Error.Failed` | Datei nicht les-/schreibbar, kein gültiges Backup |
 
 ### Beispiele
 
@@ -50,6 +54,8 @@ Daraus folgt **[projektspezifisch]**:
 busctl --user call org.kde.kpasskey /org/kde/kpasskey org.kde.kpasskey.Manager1 GetStatus
 busctl --user call org.kde.kpasskey /org/kde/kpasskey org.kde.kpasskey.Manager1 ListCredentials s ""
 busctl --user call org.kde.kpasskey /org/kde/kpasskey org.kde.kpasskey.Manager1 DeleteCredential s "<id>"
+busctl --user --timeout=600 call org.kde.kpasskey /org/kde/kpasskey org.kde.kpasskey.Manager1 ExportCredentials
+busctl --user --timeout=600 call org.kde.kpasskey /org/kde/kpasskey org.kde.kpasskey.Manager1 ImportCredentials
 ```
 
 ## polkit-Aktion (implementiert)

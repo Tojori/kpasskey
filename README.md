@@ -20,7 +20,7 @@ Website ─WebAuthn─▶ Firefox/Chromium ─CTAP2/HID─▶ /dev/hidraw ◀─
                                                                                                                 └─▶ polkit → PAM (password/fingerprint) = UV
 ```
 
-- By default, private keys (P-256 / Ed25519, OpenSSL) are stored **in KWallet** and can be restored from wallet backups. Optionally (`--key-backend=tpm`), new keys are **created inside a TPM 2.0** by the sandboxed `kpasskey-tpm-helper` and never leave it; they are then useless on any other machine, but also **lost for good** if the TPM is reset or the mainboard replaced. No cryptographic primitives are implemented here (OpenSSL 3, tpm2-tss).
+- By default, private keys (P-256 / Ed25519, OpenSSL) are stored **in KWallet** and can be backed up as an encrypted file in the FIDO **Credential Exchange Format (CXF 1.0)** (Argon2id + AES-256-GCM; triggered via `ExportCredentials`/`ImportCredentials` on D-Bus, everything else happens in kpasskey's own dialogs). Optionally (`--key-backend=tpm`), new keys are **created inside a TPM 2.0** by the sandboxed `kpasskey-tpm-helper` and never leave it; they are then useless on any other machine, but also **lost for good** if the TPM is reset or the mainboard replaced. No cryptographic primitives are implemented here (OpenSSL 3, tpm2-tss).
 - **User verification** is a fresh authentication via polkit/PAM (`auth_self`, nothing cached), so fingerprint readers work through `pam_fprintd`. Merely unlocking KWallet does **not** count as user verification ([why](docs/architecture.md#3-user-verification-warum-kwallet-unlock-keine-uv-ist)).
 - **User presence** and account selection use a native Qt dialog that shows the RP ID; site-supplied names are shown as plain text and marked as unverified.
 - Browsers see a **security key** (`usb` transport), not a "platform authenticator" ([consequences](docs/browser-compat.md)).
@@ -33,6 +33,7 @@ Website ─WebAuthn─▶ Firefox/Chromium ─CTAP2/HID─▶ /dev/hidraw ◀─
 | Firefox and Chromium (native, unmodified) on webauthn.io: register + sign in (discoverable, UV required) | ✅ |
 | python-fido2 (client + relying-party verification) over the real hidraw device, with KWallet and polkit | ✅ |
 | Keys created in and used from a real **TPM 2.0** (wallet holds only the TPM-bound blob) | ✅ |
+| Encrypted backup in the FIDO **CXF 1.0** format: export → delete → import → sign in with the original key | ✅ |
 | 80 unit/security tests, interop test, ASan/UBSan, libFuzzer (3 targets), CI on every push | ✅ |
 | Flatpak/Snap browsers, other distributions | not yet |
 

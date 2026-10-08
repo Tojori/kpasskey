@@ -79,6 +79,7 @@ constexpr int ClientDataHashSize = 32;
 constexpr int MaxUserIdSize = 64;          // WebAuthn: user.id is at most 64 bytes
 constexpr int MaxCredentialIdSize = 1023;  // CTAP 2.1: credential IDs are at most 1023 bytes
 constexpr int CredentialIdSize = 32;       // our own, randomly generated IDs
+constexpr int MinCredentialIdSize = 16;    // WebAuthn: at least 16 bytes of entropy (imported IDs)
 constexpr int MaxRpIdLength = 253;
 
 } // namespace kpasskey::ctap

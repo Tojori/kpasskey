@@ -33,6 +33,10 @@ struct CredentialRecord {
     quint32 signCount = 0;
     bool discoverable = true;     // resident key
     bool uvAtCreation = false;    // whether UV was performed when the credential was created
+    // Backup eligible (WebAuthn BE flag, fixed for the credential's lifetime):
+    // exportable via CXF. Such credentials keep signCount at 0 forever, as CXF
+    // requires (counters cannot be kept consistent across copies).
+    bool backupEligible = false;
     QDateTime created;
     QDateTime lastUsed;
 

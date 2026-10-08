@@ -409,6 +409,106 @@ bool constantTimeEquals(const QByteArray &a, const QByteArray &b)
     return a.size() == b.size() && CRYPTO_memcmp(a.constData(), b.constData(), size_t(a.size())) == 0;
 }
 
+std::optional<SecretBytes> argon2id(const QByteArray &password, const QByteArray &salt, quint32 iterations,
+                                    quint32 memoryKiB, quint32 lanes, int length)
+{
+    EVP_KDF *kdf = EVP_KDF_fetch(nullptr, "ARGON2ID", nullptr);
+    if (!kdf) {
+        return std::nullopt;
+    }
+    EVP_KDF_CTX *kctx = EVP_KDF_CTX_new(kdf);
+    EVP_KDF_free(kdf);
+    if (!kctx) {
+        return std::nullopt;
+    }
+    uint32_t threads = 1;
+    OSSL_PARAM params[] = {
+        OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PASSWORD, const_cast<char *>(password.constData()), size_t(password.size())),
+        OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT, const_cast<char *>(salt.constData()), size_t(salt.size())),
+        OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ITER, &iterations),
+        OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_MEMCOST, &memoryKiB),
+        OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_LANES, &lanes),
+        OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_THREADS, &threads),
+        OSSL_PARAM_construct_end(),
+    };
+    QByteArray out(length, '\0');
+    const bool ok = EVP_KDF_derive(kctx, reinterpret_cast<unsigned char *>(out.data()), size_t(length), params) == 1;
+    EVP_KDF_CTX_free(kctx);
+    if (!ok) {
+        OPENSSL_cleanse(out.data(), size_t(out.size()));
+        return std::nullopt;
+    }
+    return SecretBytes(std::move(out));
+}
+
+namespace {
+struct CipherCtxDeleter {
+    void operator()(EVP_CIPHER_CTX *p) const { EVP_CIPHER_CTX_free(p); }
+};
+} // namespace
+
+std::optional<QByteArray> aes256GcmEncrypt(const QByteArray &key, const QByteArray &nonce, const QByteArray &plaintext,
+                                           const QByteArray &aad)
+{
+    if (key.size() != 32 || nonce.size() != 12) {
+        return std::nullopt;
+    }
+    std::unique_ptr<EVP_CIPHER_CTX, CipherCtxDeleter> ctx(EVP_CIPHER_CTX_new());
+    int len = 0;
+    QByteArray out(plaintext.size() + 16, '\0');
+    auto *o = reinterpret_cast<unsigned char *>(out.data());
+    if (!ctx || EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1
+        || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) != 1
+        || EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, reinterpret_cast<const unsigned char *>(key.constData()),
+                              reinterpret_cast<const unsigned char *>(nonce.constData())) != 1
+        || EVP_EncryptUpdate(ctx.get(), nullptr, &len, reinterpret_cast<const unsigned char *>(aad.constData()), int(aad.size())) != 1
+        || EVP_EncryptUpdate(ctx.get(), o, &len, reinterpret_cast<const unsigned char *>(plaintext.constData()), int(plaintext.size())) != 1) {
+        return std::nullopt;
+    }
+    int total = len;
+    if (EVP_EncryptFinal_ex(ctx.get(), o + total, &len) != 1) {
+        return std::nullopt;
+    }
+    total += len;
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, 16, o + total) != 1) {
+        return std::nullopt;
+    }
+    out.resize(total + 16);
+    return out;
+}
+
+std::optional<SecretBytes> aes256GcmDecrypt(const QByteArray &key, const QByteArray &nonce,
+                                            const QByteArray &ciphertextAndTag, const QByteArray &aad)
+{
+    if (key.size() != 32 || nonce.size() != 12 || ciphertextAndTag.size() < 16) {
+        return std::nullopt;
+    }
+    const qsizetype ctLen = ciphertextAndTag.size() - 16;
+    QByteArray tag = ciphertextAndTag.right(16);
+    std::unique_ptr<EVP_CIPHER_CTX, CipherCtxDeleter> ctx(EVP_CIPHER_CTX_new());
+    QByteArray out(ctLen + 16, '\0');
+    auto *o = reinterpret_cast<unsigned char *>(out.data());
+    int len = 0;
+    if (!ctx || EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1
+        || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) != 1
+        || EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, reinterpret_cast<const unsigned char *>(key.constData()),
+                              reinterpret_cast<const unsigned char *>(nonce.constData())) != 1
+        || EVP_DecryptUpdate(ctx.get(), nullptr, &len, reinterpret_cast<const unsigned char *>(aad.constData()), int(aad.size())) != 1
+        || EVP_DecryptUpdate(ctx.get(), o, &len, reinterpret_cast<const unsigned char *>(ciphertextAndTag.constData()), int(ctLen)) != 1
+        || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, 16, tag.data()) != 1) {
+        OPENSSL_cleanse(out.data(), size_t(out.size()));
+        return std::nullopt;
+    }
+    int total = len;
+    if (EVP_DecryptFinal_ex(ctx.get(), o + total, &len) != 1) { // tag mismatch
+        OPENSSL_cleanse(out.data(), size_t(out.size()));
+        return std::nullopt;
+    }
+    total += len;
+    out.resize(total);
+    return SecretBytes(std::move(out));
+}
+
 std::optional<QByteArray> ecdsaRawToDer(const QByteArray &rs)
 {
     if (rs.size() != 64) {

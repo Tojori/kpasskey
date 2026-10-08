@@ -12,6 +12,7 @@ endfunction()
 kpasskey_test(test_authenticator unit/test_authenticator.cpp)
 kpasskey_test(test_ctaphid unit/test_ctaphid.cpp)
 kpasskey_test(test_security security/test_security.cpp)
+kpasskey_test(test_backup unit/test_backup.cpp)
 
 # Test-only CTAPHID-over-stdio harness for interop tests (never installed)
 add_executable(stdio_harness integration/stdio_harness.cpp)

@@ -68,6 +68,17 @@ std::optional<QByteArray> aes256CbcDecrypt(const QByteArray &key, const QByteArr
 QByteArray hmacSha256(const QByteArray &key, const QByteArray &data);
 bool constantTimeEquals(const QByteArray &a, const QByteArray &b);
 
+// --- backup encryption (all via OpenSSL) ---
+// Argon2id password hashing (RFC 9106). memoryKiB in KiB.
+std::optional<SecretBytes> argon2id(const QByteArray &password, const QByteArray &salt, quint32 iterations,
+                                    quint32 memoryKiB, quint32 lanes, int length);
+// AES-256-GCM; returns ciphertext || 16 byte tag. nonce must be 12 bytes.
+std::optional<QByteArray> aes256GcmEncrypt(const QByteArray &key, const QByteArray &nonce, const QByteArray &plaintext,
+                                           const QByteArray &aad);
+// Returns nullopt if the tag does not verify.
+std::optional<SecretBytes> aes256GcmDecrypt(const QByteArray &key, const QByteArray &nonce,
+                                            const QByteArray &ciphertextAndTag, const QByteArray &aad);
+
 // Converts a raw ECDSA P-256 signature (r || s, 32 bytes each, as returned by
 // a TPM) into the ASN.1 DER form WebAuthn uses.
 std::optional<QByteArray> ecdsaRawToDer(const QByteArray &rs);

@@ -109,6 +109,15 @@ Die Verwaltungs-API liegt auf dem Session-Bus und ist damit nur für Prozesse de
   Restrisiko: Jeder lokale Benutzer mit aktiver Sitzung kann sich ein eigenes FIDO-Gerät anlegen lassen. Mehr als ein Security Key ist damit nicht zu gewinnen. Der Direktmodus (`kpasskeyd --direct-uhid` mit `70-kpasskey-uhid-dev.rules`) bleibt nur für die Entwicklung und hat das alte Risiko: Eingabe-Injektion durch alle Prozesse des aktiven Benutzers.
 - Mehrere Benutzer an einem Seat: **behoben (Phase 1).** `SessionWatcher` beobachtet über logind die grafische Sitzung des Benutzers (`User.Display` → `Session.Active`). Wird sie inaktiv (Benutzerwechsel, Sperrbildschirm eines anderen Seats), bricht der Daemon offene Zeremonien ab und entfernt das uhid-Gerät; bei Reaktivierung legt er es neu an. Ist logind nicht erreichbar, wird kein Gerät angelegt (fail closed). Restrisiko: Das Zeitfenster zwischen Sitzungswechsel und Signal liegt im Millisekundenbereich.
 
+### T17 Backup-Dateien (CXF-Export)
+1. **Szenario:** Eine Backup-Datei gerät in fremde Hände (Cloud-Sync, verlorener USB-Stick), oder ein Prozess löst heimlich einen Export aus.
+2. **Auswirkung:** Mit der Passphrase lassen sich alle exportierten Passkeys auf einem fremden Gerät nutzen.
+3. **Schutz:**
+   - Ein Export braucht frische UV (polkit) und mehrere Benutzeraktionen in Dialogen von kpasskeyd. Ein Prozess kann den Export per D-Bus nur *anstoßen*, nicht unbemerkt durchführen.
+   - Die Datei ist mit Argon2id (64 MiB, 3 Durchläufe) und AES-256-GCM verschlüsselt, Rechte 0600. Die Passphrase muss mindestens 12 Zeichen haben; der Generator liefert 125 Bit.
+   - Manipulation wird erkannt (GCM-Tag, Header als AAD). Präparierte KDF-Parameter werden begrenzt.
+4. **Restrisiko:** Schwache, selbst gewählte Passphrasen sind offline angreifbar. Malware desselben Benutzers kann Dialoge nachahmen oder die Passphrase beim Eintippen mitschneiden. Exportierbare Passkeys sind **per Definition** kopierbar (`BE=1`); wer das nicht will, nutzt `--key-backend=tpm`.
+
 ### T16 TPM (Phase 3, umgesetzt)
 
 Aufbau: `kpasskey-tpm-helper` läuft als Systembenutzer `kpasskey-tpm` (Gruppe `tss`), socket-aktiviert und sandboxed (`DevicePolicy=closed`, nur `/dev/tpmrm0`). Nur er hat TPM-Zugriff; Benutzer brauchen **nicht** in die Gruppe `tss`. Das ist wichtig, weil `tss`-Mitglieder bei leerem Lockout-Auth das TPM sogar zurücksetzen könnten.

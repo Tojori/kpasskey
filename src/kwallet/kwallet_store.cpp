@@ -157,6 +157,21 @@ QList<CredentialMetadata> KWalletStore::listAll()
     return out;
 }
 
+QList<CredentialRecord> KWalletStore::allRecords()
+{
+    QList<CredentialRecord> out;
+    if (!isOpen() || !m_wallet->setFolder(folder())) {
+        return out;
+    }
+    const QStringList keys = m_wallet->entryList();
+    for (const QString &key : keys) {
+        if (auto r = readEntry(key)) {
+            out.append(std::move(*r));
+        }
+    }
+    return out;
+}
+
 bool KWalletStore::remove(const QString &credentialIdB64)
 {
     if (!isOpen() || !m_wallet->setFolder(folder())) {

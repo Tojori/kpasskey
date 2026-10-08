@@ -47,6 +47,17 @@ QList<CredentialMetadata> MemoryStore::listAll()
     return out;
 }
 
+QList<CredentialRecord> MemoryStore::allRecords()
+{
+    QList<CredentialRecord> out;
+    for (auto it = m_entries.constBegin(); it != m_entries.constEnd(); ++it) {
+        if (auto r = record::decode(it.key(), it.value())) {
+            out.append(std::move(*r));
+        }
+    }
+    return out;
+}
+
 bool MemoryStore::remove(const QString &credentialIdB64)
 {
     const QString suffix = QLatin1Char('/') + credentialIdB64;

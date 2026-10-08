@@ -34,6 +34,8 @@ CachyOS, Plasma 6.7.5, Qt 6.12, polkit 127, KF 6.30; python-fido2 über `/dev/hi
 | TPM: manipuliertes Blob wird vom TPM abgewiesen (`TPM_RC_INTEGRITY`) | ✅ |
 | TPM: Registrierung + Login über den Dienst; Wallet-Eintrag ist Schema 2 / `protection: tpm2` | ✅ |
 | TPM: Blob eines anderen Benutzers wird abgewiesen | nicht getestet (zweites Konto mit aktiver Sitzung nötig) |
+| **CXF-Backup:** Registrieren → Export (UV, Dateidialog, generierte Passphrase) → Passkey löschen → Import → Anmeldung, von der RP gegen den **ursprünglichen** Public Key verifiziert; `BE=1`, Zähler 0 | ✅ |
+| Backup-Datei: Rechte 0600, Argon2id 64 MiB / 3 Durchläufe, AES-256-GCM, keine Klartext-Metadaten | ✅ |
 
 Beobachtete CTAP-Abläufe (aus dem Daemon-Log):
 

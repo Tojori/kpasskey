@@ -72,7 +72,7 @@ private Q_SLOTS:
         ga.insert(7, 2);
         const QByteArray a = run(*auth, ctap::GetAssertion, ga);
         QCOMPARE(status(a), ctap::Ok);
-        QCOMPARE(parseAuthData(body(a).value(2).toByteArray()).flags, quint8(ctap::FlagUP | ctap::FlagUV));
+        QCOMPARE(parseAuthData(body(a).value(2).toByteArray()).flags, quint8(ctap::FlagUP | ctap::FlagUV | ctap::FlagBE));
     }
 
     void tpmBackedCredentials()
@@ -104,8 +104,11 @@ private Q_SLOTS:
         QCOMPARE(rec->keyProtection, protection::Tpm2);
         QVERIFY(store.rawEntries().value(record::entryKey(QStringLiteral("example.com"), ad.credentialId)).contains(QStringLiteral("\"schema\":2")));
 
+        QCOMPARE(ad.flags & ctap::FlagBE, 0); // device-bound
+        QVERIFY(!rec->backupEligible);
         const QByteArray ga = run(a, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh));
         QCOMPARE(status(ga), ctap::Ok);
+        QCOMPARE(parseAuthData(body(ga).value(2).toByteArray()).counter, 1u); // TPM keys keep a real counter
         QVERIFY(crypto::verify(rec->publicKeyCose, body(ga).value(2).toByteArray() + cdh, body(ga).value(3).toByteArray()));
         QCOMPARE(hw.signs, 2); // attestation + assertion
 
@@ -161,7 +164,8 @@ private Q_SLOTS:
         const QByteArray authData = resp.value(2).toByteArray();
         const auto ad = parseAuthData(authData);
         QCOMPARE(ad.rpIdHash, crypto::sha256("example.com"));
-        QCOMPARE(ad.flags, quint8(ctap::FlagUP | ctap::FlagUV | ctap::FlagAT));
+        // software keys are exportable (CXF) and therefore backup eligible
+        QCOMPARE(ad.flags, quint8(ctap::FlagUP | ctap::FlagUV | ctap::FlagAT | ctap::FlagBE));
         QCOMPARE(ad.counter, 0u);
         QCOMPARE(ad.credentialId.size(), ctap::CredentialIdSize);
         const QByteArray aaguid = QByteArray::fromHex("a449940063e64329b1e1883b52c928b2");
@@ -201,7 +205,8 @@ private Q_SLOTS:
         const auto rec = store.find(QStringLiteral("example.com"), credId);
         QVERIFY(rec);
 
-        for (quint32 expected = 1; expected <= 3; ++expected) {
+        // Backup-eligible credentials keep the counter at 0 (CXF requirement).
+        for (quint32 expected : {0u, 0u, 0u}) {
             const QByteArray r = run(*auth, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh));
             QCOMPARE(status(r), ctap::Ok);
             const QCborMap resp = body(r);
@@ -209,13 +214,14 @@ private Q_SLOTS:
             const QByteArray authData = resp.value(2).toByteArray();
             const auto ad = parseAuthData(authData);
             QCOMPARE(ad.counter, expected);
-            QCOMPARE(ad.flags, quint8(ctap::FlagUP));
+            QCOMPARE(ad.flags, quint8(ctap::FlagUP | ctap::FlagBE));
             QVERIFY(crypto::verify(rec->publicKeyCose, authData + cdh, resp.value(3).toByteArray()));
             QCOMPARE(resp.value(4).toMap().value(QStringLiteral("id")).toByteArray(), QByteArray("user-1"));
             // no identifying info without UV
             QVERIFY(!resp.value(4).toMap().contains(QStringLiteral("name")));
         }
-        QCOMPARE(store.find(QStringLiteral("example.com"), credId)->signCount, 3u);
+        QCOMPARE(store.find(QStringLiteral("example.com"), credId)->signCount, 0u);
+        QVERIFY(store.find(QStringLiteral("example.com"), credId)->lastUsed.isValid());
     }
 
     void assertionWithUvReturnsUserInfo()
@@ -223,7 +229,7 @@ private Q_SLOTS:
         createCredential(QStringLiteral("example.com"), "user-1");
         const QByteArray r = run(*auth, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh, {}, {}, true));
         QCOMPARE(status(r), ctap::Ok);
-        QCOMPARE(parseAuthData(body(r).value(2).toByteArray()).flags, quint8(ctap::FlagUP | ctap::FlagUV));
+        QCOMPARE(parseAuthData(body(r).value(2).toByteArray()).flags, quint8(ctap::FlagUP | ctap::FlagUV | ctap::FlagBE));
         QCOMPARE(body(r).value(4).toMap().value(QStringLiteral("name")).toString(), QStringLiteral("alice@example.com"));
     }
 
@@ -320,7 +326,7 @@ private Q_SLOTS:
         const QByteArray r = run(*auth, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh, {}, false));
         QCOMPARE(status(r), ctap::Ok);
         QCOMPARE(prompter.calls, before);
-        QCOMPARE(parseAuthData(body(r).value(2).toByteArray()).flags, quint8(0));
+        QCOMPARE(parseAuthData(body(r).value(2).toByteArray()).flags, quint8(ctap::FlagBE));
     }
 
     void unsupportedCommands()

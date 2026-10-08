@@ -28,6 +28,8 @@ public:
     virtual std::optional<CredentialRecord> find(const QString &rpId, const QByteArray &credentialId) = 0;
     virtual QList<CredentialRecord> findByRp(const QString &rpId) = 0;
     virtual QList<CredentialMetadata> listAll() = 0;
+    // Full records including key material (backup export only).
+    virtual QList<CredentialRecord> allRecords() = 0;
     // Removes a credential by its base64url ID. Returns false if not found.
     virtual bool remove(const QString &credentialIdB64) = 0;
 };
@@ -41,6 +43,7 @@ public:
     std::optional<CredentialRecord> find(const QString &rpId, const QByteArray &credentialId) override;
     QList<CredentialRecord> findByRp(const QString &rpId) override;
     QList<CredentialMetadata> listAll() override;
+    QList<CredentialRecord> allRecords() override;
     bool remove(const QString &credentialIdB64) override;
 
     // Test hooks
