@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  # libQt6Core (not instrumented) allocates with operator new(nothrow) and frees
+  # with free() internally; this is a known false positive, see docs/build.md.
+  ASAN_OPTIONS: alloc_dealloc_mismatch=0:detect_leaks=1
+  UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+jobs:
+  build-test:
+    name: Build + tests (gcc, RelWithDebInfo)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed base-devel cmake git qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs python python-fido2
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+      - name: Test (unit, security, python-fido2 interop)
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: Tests with ASan + UBSan
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed base-devel cmake git qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs python python-fido2
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DKPASSKEY_SANITIZE=ON
+      - name: Build
+        run: cmake --build build-san -j"$(nproc)"
+      - name: Test
+        run: ctest --test-dir build-san --output-on-failure
+
+  fuzz:
+    name: Fuzzing smoke run (libFuzzer, 60 s per target)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed base-devel cmake git clang compiler-rt qt6-base openssl
+      - uses: actions/checkout@v4
+      - name: Build fuzzers
+        run: |
+          CC=clang CXX=clang++ cmake -S . -B build-fuzz -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DKPASSKEY_FUZZ=ON -DKPASSKEY_BUILD_DAEMON=OFF -DBUILD_TESTING=OFF
+          cmake --build build-fuzz -j"$(nproc)"
+      - name: Fuzz
+        run: |
+          for t in authenticator ctaphid record; do
+            mkdir -p "work/$t" "artifacts/$t"
+            cp fuzz/corpus/$t/* "work/$t/"
+            echo "::group::fuzz_$t"
+            QT_LOGGING_RULES="org.kde.kpasskey=false" build-fuzz/fuzz/fuzz_$t -max_total_time=60 -max_len=8192 \
+              -timeout=10 -artifact_prefix="artifacts/$t/" "work/$t"
+            echo "::endgroup::"
+          done
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: artifacts/
