@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm --needed base-devel cmake git qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs python python-fido2
+          pacman -Syu --noconfirm --needed base-devel cmake git qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs tpm2-tss python python-fido2 python-cryptography
       - uses: actions/checkout@v4
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
@@ -40,7 +40,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm --needed base-devel cmake git qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs python python-fido2
+          pacman -Syu --noconfirm --needed base-devel cmake git qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs tpm2-tss python python-fido2 python-cryptography
       - uses: actions/checkout@v4
       - name: Configure
         run: cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DKPASSKEY_SANITIZE=ON
@@ -56,7 +56,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm --needed base-devel cmake git clang compiler-rt qt6-base openssl
+          pacman -Syu --noconfirm --needed base-devel cmake git clang compiler-rt qt6-base openssl tpm2-tss
       - uses: actions/checkout@v4
       - name: Build fuzzers
         run: |
