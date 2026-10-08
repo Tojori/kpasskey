@@ -67,8 +67,9 @@ int main(int argc, char **argv)
     QCommandLineOption directUhid(QStringLiteral("direct-uhid"),
                                   QStringLiteral("Open /dev/uhid directly instead of using kpasskey-uhid-helper (development only)."));
     QCommandLineOption keyBackend(QStringLiteral("key-backend"),
-                                  QStringLiteral("Where new private keys live: auto (TPM if kpasskey-tpm-helper is installed), tpm, software."),
-                                  QStringLiteral("backend"), QStringLiteral("auto"));
+                                  QStringLiteral("Where new private keys live: software (default; KWallet-protected, recoverable "
+                                                 "from wallet backups) or tpm (bound to this TPM: lost with the TPM/mainboard)."),
+                                  QStringLiteral("backend"), QStringLiteral("software"));
     parser.addOption(ignoreSession);
     parser.addOption(directUhid);
     parser.addOption(keyBackend);
@@ -112,14 +113,16 @@ int main(int argc, char **argv)
         options.hardwareKeys = &tpm;
     }
     const QString backend = parser.value(keyBackend);
-    if (backend == QLatin1String("tpm") || (backend == QLatin1String("auto") && TpmClient::isAvailable())) {
+    // TPM is opt-in on purpose: hardware-bound keys cannot be backed up or
+    // moved, so a TPM reset or mainboard swap loses them (docs/security.md T16).
+    if (backend == QLatin1String("tpm")) {
         if (!TpmClient::isAvailable()) {
             qCCritical(KPASSKEY_LOG) << "--key-backend=tpm, but kpasskey-tpm-helper is not installed";
             return 4;
         }
         options.createInHardware = true;
         qCInfo(KPASSKEY_LOG) << "new passkeys are created in the TPM (ES256 only)";
-    } else if (backend == QLatin1String("software") || backend == QLatin1String("auto")) {
+    } else if (backend == QLatin1String("software")) {
         qCInfo(KPASSKEY_LOG) << "new passkeys are created in software and protected by KWallet only";
     } else {
         qCCritical(KPASSKEY_LOG) << "unknown --key-backend" << backend;

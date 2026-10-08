@@ -20,7 +20,7 @@ Website ─WebAuthn─▶ Firefox/Chromium ─CTAP2/HID─▶ /dev/hidraw ◀─
                                                                                                                 └─▶ polkit → PAM (password/fingerprint) = UV
 ```
 
-- With a TPM 2.0, new private keys are **created inside the TPM** by the sandboxed `kpasskey-tpm-helper` and never leave it; KWallet only stores the TPM-bound blob, which is useless on any other machine. Without a TPM, keys (P-256 / Ed25519, OpenSSL) are protected by KWallet only. No cryptographic primitives are implemented here (OpenSSL 3, tpm2-tss).
+- By default, private keys (P-256 / Ed25519, OpenSSL) are stored **in KWallet** and can be restored from wallet backups. Optionally (`--key-backend=tpm`), new keys are **created inside a TPM 2.0** by the sandboxed `kpasskey-tpm-helper` and never leave it; they are then useless on any other machine, but also **lost for good** if the TPM is reset or the mainboard replaced. No cryptographic primitives are implemented here (OpenSSL 3, tpm2-tss).
 - **User verification** is a fresh authentication via polkit/PAM (`auth_self`, nothing cached), so fingerprint readers work through `pam_fprintd`. Merely unlocking KWallet does **not** count as user verification ([why](docs/architecture.md#3-user-verification-warum-kwallet-unlock-keine-uv-ist)).
 - **User presence** and account selection use a native Qt dialog that shows the RP ID; site-supplied names are shown as plain text and marked as unverified.
 - Browsers see a **security key** (`usb` transport), not a "platform authenticator" ([consequences](docs/browser-compat.md)).

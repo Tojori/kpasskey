@@ -29,6 +29,13 @@
 6. Offen: Migration bestehender Software-Passkeys ins TPM ist **nicht möglich** (Schlüssel lassen sich nicht nachträglich „fixedTPM“ machen). Wer TPM-Schutz will, registriert neu.
 7. Offen: Anzeige der Schutzart (TPM/KWallet) in einer künftigen KCM; die Verwaltungs-API liefert sie bereits intern.
 
+## Phase 3b – Sicherung und Wiederherstellung ohne Hardware-Bindung
+Seit 2026-10-08 ist `software` der Standard und TPM opt-in, weil gerätegebundene Schlüssel bei Hardwaredefekt verloren gehen.
+1. **Verschlüsselter Export/Import** im FIDO-Format **CXF** (Credential Exchange Format, seit 08/2025 FIDO Proposed Standard). Später die Übertragung zwischen Anbietern per **CXP** (HPKE-verschlüsselt; Standardisierung für 2026 geplant). Nur nach UV, Export-Datei mit starker Passphrase (Argon2id/scrypt über OpenSSL) verschlüsselt.
+2. **Optionaler Mittelweg „TPM + Wiederherstellungscode“**: Der private Schlüssel wird doppelt verschlüsselt im Wallet abgelegt, einmal mit einem TPM-versiegelten Datenschlüssel (Alltag) und einmal mit einem einmalig angezeigten Wiederherstellungscode (Notfall). Das schützt gegen Offline-Diebstahl und ist bei TPM-Verlust trotzdem wiederherstellbar. Nachteil gegenüber reinem TPM: Der Schlüssel ist bei der Signatur kurz im Speicher von kpasskeyd.
+3. **BE-Flag ehrlich setzen**: Exportierbare Credentials dürfen `BE=1` (backup eligible) melden. Das ist eine bewusste Entscheidung, weil manche RPs BE=0 als „gerätegebunden“ werten.
+4. Doku für Nutzer: pro Konto immer einen zweiten Anmeldeweg (zweiter Authenticator oder Wiederherstellungscodes der Website).
+
 ## Phase 4 – Standardpfad credentialsd / Freedesktop
 1. **KDE-UI-Backend** für `org.freedesktop.impl.portal.experimental.Credential` (Qt/Kirigami) und Upstream-Beitrag zu credentialsd bzw. xdg-desktop-portal-kde. Das ist unabhängig vom KWallet-Speicher sofort wertvoll für KDE.
 2. Mitarbeit an credentialsd **#26 (Third-party providers)** und **#8 (Platform authenticator)**: Den `kpasskeycore` als Provider anbieten. Ab dann erhält der Dienst den geprüften Origin und gilt bei Unterstützung durch Browser als Platform-/Provider-Authenticator (`isUVPAA`, `authenticatorAttachment: "platform"`).

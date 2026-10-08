@@ -74,7 +74,7 @@ Ungültige Einträge werden übersprungen (Log ohne Inhalt) und niemals übersch
 
 ## Schema v2: TPM-geschützte Schlüssel
 
-Bei `--key-backend=tpm` (Standard `auto`, sobald `kpasskey-tpm-helper` installiert ist) entstehen neue Schlüssel **im TPM**. Der Eintrag unterscheidet sich nur im Objekt `private_key`:
+Nur bei ausdrücklichem `--key-backend=tpm` entstehen neue Schlüssel **im TPM** (Standard ist `software`, weil TPM-Schlüssel nicht gesichert werden können). Der Eintrag unterscheidet sich nur im Objekt `private_key`:
 
 ```json
 "schema": 2,

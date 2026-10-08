@@ -18,7 +18,7 @@ Website ─WebAuthn─▶ Firefox/Chromium ─CTAP2/HID─▶ /dev/hidraw ◀─
                                                                                                                 └─▶ polkit → PAM (Passwort/Fingerabdruck) = UV
 ```
 
-- Mit TPM 2.0 entstehen neue private Schlüssel **im TPM** (über den sandboxed `kpasskey-tpm-helper`) und verlassen es nie; im KWallet liegt nur das TPM-gebundene Blob. Ohne TPM liegen die Schlüssel (P-256/Ed25519, OpenSSL) **verschlüsselt im KWallet**.
+- Standardmäßig liegen die privaten Schlüssel (P-256/Ed25519, OpenSSL) **verschlüsselt im KWallet** und lassen sich über ein Wallet-Backup wiederherstellen. Optional (`--key-backend=tpm`) entstehen neue Schlüssel **im TPM** und verlassen es nie. Sie sind dann auf anderen Rechnern wertlos, gehen aber bei TPM-Reset oder Mainboard-Tausch **unwiederbringlich verloren**.
 - **User Verification** = frische Authentifizierung über polkit/PAM (`auth_self`). Eine bloße KWallet-Entsperrung zählt **nicht** als UV ([warum](docs/architecture.md#3-user-verification-warum-kwallet-unlock-keine-uv-ist)).
 - Der Browser sieht einen **Security Key**, keinen „Platform Authenticator“ ([Konsequenzen](docs/browser-compat.md)).
 

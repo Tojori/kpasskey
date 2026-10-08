@@ -62,7 +62,7 @@ Optionen von `kpasskeyd`:
 | `--no-uv` | keine User Verification anbieten |
 | `--deny-silent` | stille Prüfanfragen (`up=false`) mit `NO_CREDENTIALS` beantworten (Datenschutz) |
 | `--ignore-session` | Gerät unabhängig vom Sitzungsstatus anlegen (nur Test; der Helfer prüft trotzdem) |
-| `--key-backend=auto\|tpm\|software` | wo neue Schlüssel entstehen; `auto` = TPM, wenn `kpasskey-tpm-helper` installiert ist (vorhandene Passkeys funktionieren unabhängig davon weiter) |
+| `--key-backend=software\|tpm` | wo neue Schlüssel entstehen. **Standard `software`**: KWallet-geschützt und über ein Wallet-Backup wiederherstellbar. `tpm` nur bewusst wählen: an dieses TPM gebunden, bei TPM-Reset oder Mainboard-Tausch **unwiederbringlich verloren**. Vorhandene Passkeys der jeweils anderen Art funktionieren weiter. |
 | `--direct-uhid` | `/dev/uhid` selbst öffnen statt über den Helfer (nur Entwicklung, braucht `packaging/udev/70-kpasskey-uhid-dev.rules`) |
 
 Hinweis: Qt schreibt Logs bei Start über systemd ins Journal. Für Ausgabe auf stderr: `QT_FORCE_STDERR_LOGGING=1`.
