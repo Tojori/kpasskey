@@ -9,6 +9,7 @@
 
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
+#include <openssl/ecdsa.h>
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
 #include <openssl/param_build.h>
@@ -406,6 +407,31 @@ QByteArray hmacSha256(const QByteArray &key, const QByteArray &data)
 bool constantTimeEquals(const QByteArray &a, const QByteArray &b)
 {
     return a.size() == b.size() && CRYPTO_memcmp(a.constData(), b.constData(), size_t(a.size())) == 0;
+}
+
+std::optional<QByteArray> ecdsaRawToDer(const QByteArray &rs)
+{
+    if (rs.size() != 64) {
+        return std::nullopt;
+    }
+    ECDSA_SIG *sig = ECDSA_SIG_new();
+    BIGNUM *r = BN_bin2bn(reinterpret_cast<const unsigned char *>(rs.constData()), 32, nullptr);
+    BIGNUM *s = BN_bin2bn(reinterpret_cast<const unsigned char *>(rs.constData()) + 32, 32, nullptr);
+    if (!sig || !r || !s || ECDSA_SIG_set0(sig, r, s) != 1) {
+        BN_free(r);
+        BN_free(s);
+        ECDSA_SIG_free(sig);
+        return std::nullopt;
+    }
+    unsigned char *der = nullptr;
+    const int len = i2d_ECDSA_SIG(sig, &der);
+    ECDSA_SIG_free(sig);
+    if (len <= 0) {
+        return std::nullopt;
+    }
+    QByteArray out(reinterpret_cast<const char *>(der), len);
+    OPENSSL_free(der);
+    return out;
 }
 
 QByteArray randomBytes(int count)

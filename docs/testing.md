@@ -11,7 +11,7 @@
 | System: virtuelles Gerät + KWallet + polkit | python-fido2 `--hidraw`, `fido2-token` | manuell / VM | nein (braucht Sitzung) |
 | Browser E2E | Firefox, Chromium, webauthn.io | Checkliste unten | manuell |
 
-Stand dieses Prototyps: **74 QtTest-Fälle + 14 Interop-Prüfungen bestehen**, auch unter ASan/UBSan inklusive LeakSanitizer (lokal ausgeführt).
+Stand dieses Prototyps: **80 QtTest-Fälle + 14 Interop-Prüfungen bestehen**, auch unter ASan/UBSan inklusive LeakSanitizer (lokal ausgeführt).
 
 ## Systemtest auf echter Hardware-Schnittstelle (2026-10-08)
 
@@ -30,6 +30,10 @@ CachyOS, Plasma 6.7.5, Qt 6.12, polkit 127, KF 6.30; python-fido2 über `/dev/hi
 | `kpasskeyd` als **systemd-User-Dienst**: polkit-Dialog erscheint, Registrierung OK | ✅ |
 | Gerät über **kpasskey-uhid-helper** (Systembenutzer, sandboxed; `/dev/uhid` = `root:kpasskey-uhid 0660`, kein Benutzer-ACL): Registrierung + Login | ✅ |
 | hidraw-Knoten des Helfer-Geräts: ACL für den Sitzungsbenutzer über systemd `60-fido-id`/uaccess | ✅ |
+| **TPM 2.0** (`kpasskey-tpm-helper`, echtes TPM): Schlüssel erzeugen (0,32 s), Attribute `fixedTPM\|fixedParent\|sensitiveDataOrigin\|userWithAuth\|noDA\|sign`, Signatur (0,19 s) mit Python `cryptography` verifiziert | ✅ |
+| TPM: manipuliertes Blob wird vom TPM abgewiesen (`TPM_RC_INTEGRITY`) | ✅ |
+| TPM: Registrierung + Login über den Dienst; Wallet-Eintrag ist Schema 2 / `protection: tpm2` | ✅ |
+| TPM: Blob eines anderen Benutzers wird abgewiesen | nicht getestet (zweites Konto mit aktiver Sitzung nötig) |
 
 Beobachtete CTAP-Abläufe (aus dem Daemon-Log):
 

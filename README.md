@@ -20,7 +20,7 @@ Website ─WebAuthn─▶ Firefox/Chromium ─CTAP2/HID─▶ /dev/hidraw ◀─
                                                                                                                 └─▶ polkit → PAM (password/fingerprint) = UV
 ```
 
-- Private keys (P-256 / Ed25519, generated with OpenSSL) are stored **only inside KWallet**. No cryptographic primitives are implemented here; everything goes through OpenSSL 3.
+- With a TPM 2.0, new private keys are **created inside the TPM** by the sandboxed `kpasskey-tpm-helper` and never leave it; KWallet only stores the TPM-bound blob, which is useless on any other machine. Without a TPM, keys (P-256 / Ed25519, OpenSSL) are protected by KWallet only. No cryptographic primitives are implemented here (OpenSSL 3, tpm2-tss).
 - **User verification** is a fresh authentication via polkit/PAM (`auth_self`, nothing cached), so fingerprint readers work through `pam_fprintd`. Merely unlocking KWallet does **not** count as user verification ([why](docs/architecture.md#3-user-verification-warum-kwallet-unlock-keine-uv-ist)).
 - **User presence** and account selection use a native Qt dialog that shows the RP ID; site-supplied names are shown as plain text and marked as unverified.
 - Browsers see a **security key** (`usb` transport), not a "platform authenticator" ([consequences](docs/browser-compat.md)).
@@ -32,12 +32,13 @@ Website ─WebAuthn─▶ Firefox/Chromium ─CTAP2/HID─▶ /dev/hidraw ◀─
 |---|---|
 | Firefox and Chromium (native, unmodified) on webauthn.io: register + sign in (discoverable, UV required) | ✅ |
 | python-fido2 (client + relying-party verification) over the real hidraw device, with KWallet and polkit | ✅ |
-| 74 unit/security tests, interop test, ASan/UBSan, libFuzzer (3 targets) | ✅ |
+| Keys created in and used from a real **TPM 2.0** (wallet holds only the TPM-bound blob) | ✅ |
+| 80 unit/security tests, interop test, ASan/UBSan, libFuzzer (3 targets), CI on every push | ✅ |
 | Flatpak/Snap browsers, other distributions | not yet |
 
 ## Quick start
 
-Dependencies (Arch/CachyOS): `cmake qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs` (optional: `python-fido2` for the interop test).
+Dependencies (Arch/CachyOS): `cmake qt6-base kwallet ki18n polkit-qt6 openssl systemd-libs tpm2-tss` (optional: `python-fido2 python-cryptography` for the interop test).
 
 ```sh
 # build and test (no root needed)
@@ -70,7 +71,7 @@ The design documents are currently in German:
 
 - Not a platform authenticator from the browser's point of view: `authenticatorAttachment: "platform"` requests and `isUserVerifyingPlatformAuthenticatorAvailable()` do not use it.
 - The authenticator never sees the origin, only the RP ID (a CTAP limitation); phishing protection comes from the browser's origin check plus the signed RP ID hash.
-- Same-user processes can read KWallet; TPM2-bound keys are planned (roadmap phase 3).
+- Same-user processes can read KWallet. With the TPM backend this no longer exposes keys, but such malware could still ask the TPM helper to sign (binding signatures to user verification via TPM policy is on the roadmap).
 - The USB VID:PID `1209:0001` is a pid.codes test ID and the AAGUID `a4499400-63e6-4329-b1e1-883b52c928b2` is not yet registered in the community list.
 
 ## License

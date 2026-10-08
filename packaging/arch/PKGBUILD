@@ -9,9 +9,9 @@ pkgdesc="KWallet-backed FIDO2/passkey authenticator for KDE Plasma (prototype)"
 arch=(x86_64)
 url="https://github.com/Tojori/kpasskey"
 license=(LGPL-2.1-or-later)
-depends=(qt6-base kwallet ki18n polkit-qt6 polkit openssl systemd-libs)
+depends=(qt6-base kwallet ki18n polkit-qt6 polkit openssl systemd-libs tpm2-tss)
 makedepends=(cmake)
-checkdepends=(python-fido2)
+checkdepends=(python-fido2 python-cryptography)
 source=()
 
 build() {

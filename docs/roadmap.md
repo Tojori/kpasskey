@@ -21,11 +21,13 @@
 4. **KCM** „Passkeys“ in den Systemeinstellungen (auflisten, umbenennen, löschen mit UV), basierend auf `org.kde.kpasskey.Manager1`.
 
 ## Phase 3 – Hardware-Bindung (TPM2)
-1. Schema v2: `private_key.protection = "tpm2"`. Schlüssel werden **im TPM erzeugt** (ECC P-256, `TPM2_Create` unter einem persistenten Primary in der Owner-Hierarchie). KWallet speichert nur das TPM-Blob, ein Diebstahl des Wallets oder Home-Verzeichnisses ist damit wertlos.
-2. Integritäts-MAC über die Datensätze mit TPM-gebundenem HMAC-Schlüssel (gegen eingeschleuste Credentials).
-3. Optionale TPM-Policy mit Auth-Wert, der aus der UV abgeleitet wird; DA-Lockout nutzen; Sessions mit Parameter-Verschlüsselung.
-4. Fallback ohne TPM: weiterhin `protection = "kwallet"`, in der UI klar gekennzeichnet.
-5. Migration v1→v2 nur auf Nutzerwunsch, weil gerätegebundene Schlüssel bei TPM-Verlust unwiederbringlich sind.
+1. ✅ Schema v2 (`protection = "tpm2"`): Schlüssel werden **im TPM erzeugt** (ECC P-256 unter einem deterministischen Speicher-Primärschlüssel der Owner-Hierarchie); KWallet speichert nur das Blob.
+2. ✅ `kpasskey-tpm-helper` als einziger TPM-Nutzer (Systembenutzer, sandboxed), uid-gebundene authValues, `noDA`, gesalzene HMAC-Session mit Parameter-Verschlüsselung.
+3. ✅ Fallback ohne TPM: `protection = "kwallet"` (Schema 1); `--key-backend` wählt.
+4. Offen: Bindung der Signatur an die Benutzerverifikation (TPM-Policy, z. B. PolicySigned durch einen UV-Nachweis), damit der Helfer kein Signier-Orakel für Malware desselben Benutzers ist.
+5. Offen: Integritäts-MAC über die Datensätze mit TPM-gebundenem Schlüssel (gegen eingeschleuste Credentials, T8).
+6. Offen: Migration bestehender Software-Passkeys ins TPM ist **nicht möglich** (Schlüssel lassen sich nicht nachträglich „fixedTPM“ machen). Wer TPM-Schutz will, registriert neu.
+7. Offen: Anzeige der Schutzart (TPM/KWallet) in einer künftigen KCM; die Verwaltungs-API liefert sie bereits intern.
 
 ## Phase 4 – Standardpfad credentialsd / Freedesktop
 1. **KDE-UI-Backend** für `org.freedesktop.impl.portal.experimental.Credential` (Qt/Kirigami) und Upstream-Beitrag zu credentialsd bzw. xdg-desktop-portal-kde. Das ist unabhängig vom KWallet-Speicher sofort wertvoll für KDE.

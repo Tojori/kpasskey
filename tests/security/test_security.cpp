@@ -162,6 +162,44 @@ private Q_SLOTS:
         QCOMPARE(err, record::DecodeError::Inconsistent);
     }
 
+    void tamperedTpmBlobIsRejected()
+    {
+        FakeHardwareKeyStore hw;
+        Authenticator::Options o;
+        o.hardwareKeys = &hw;
+        o.createInHardware = true;
+        Authenticator a(&store, &prompter, &verifier, o);
+        const QByteArray r1 = run(a, ctap::MakeCredential, makeCredentialParams(QStringLiteral("example.com"), "user-a", cdh));
+        const QByteArray r2 = run(a, ctap::MakeCredential, makeCredentialParams(QStringLiteral("example.com"), "user-b", cdh));
+        const QByteArray id1 = parseAuthData(body(r1).value(2).toByteArray()).credentialId;
+        const QByteArray id2 = parseAuthData(body(r2).value(2).toByteArray()).credentialId;
+        const QString k1 = record::entryKey(QStringLiteral("example.com"), id1);
+        const QString k2 = record::entryKey(QStringLiteral("example.com"), id2);
+        auto rec1 = record::decode(k1, store.rawEntries().value(k1));
+        auto rec2 = record::decode(k2, store.rawEntries().value(k2));
+        QVERIFY(rec1 && rec2);
+        // swap the key blob of credential 2 into credential 1
+        rec1->privateKeyPkcs8 = rec2->privateKeyPkcs8;
+        record::DecodeError err;
+        QVERIFY(!record::decode(k1, record::encode(*rec1), &err));
+        QCOMPARE(err, record::DecodeError::Inconsistent);
+        // garbage blob
+        rec1->privateKeyPkcs8 = SecretBytes(QByteArray(100, 'x'));
+        QVERIFY(!record::decode(k1, record::encode(*rec1), &err));
+    }
+
+    void tpmFailureYieldsNoCredential()
+    {
+        FakeHardwareKeyStore hw;
+        hw.fail = true;
+        Authenticator::Options o;
+        o.hardwareKeys = &hw;
+        o.createInHardware = true;
+        Authenticator a(&store, &prompter, &verifier, o);
+        QCOMPARE(status(run(a, ctap::MakeCredential, makeCredentialParams(QStringLiteral("example.com"), "u", cdh))), ctap::ErrOther);
+        QVERIFY(store.listAll().isEmpty());
+    }
+
     void futureSchemaIsNotTouched()
     {
         const QByteArray id = create(QStringLiteral("example.com"));

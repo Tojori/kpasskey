@@ -4,6 +4,8 @@
 
 #include <QTest>
 
+#include <openssl/ecdsa.h>
+
 using namespace kpasskey;
 using namespace kpasskey::test;
 
@@ -71,6 +73,68 @@ private Q_SLOTS:
         const QByteArray a = run(*auth, ctap::GetAssertion, ga);
         QCOMPARE(status(a), ctap::Ok);
         QCOMPARE(parseAuthData(body(a).value(2).toByteArray()).flags, quint8(ctap::FlagUP | ctap::FlagUV));
+    }
+
+    void tpmBackedCredentials()
+    {
+        FakeHardwareKeyStore hw;
+        Authenticator::Options o;
+        o.hardwareKeys = &hw;
+        o.createInHardware = true;
+        Authenticator a(&store, &prompter, &verifier, o);
+
+        // only ES256 is offered and an EdDSA-only request is refused
+        const QCborArray algs = body(run(a, ctap::GetInfo)).value(10).toArray();
+        QCOMPARE(algs.size(), 1);
+        QCOMPARE(algs.at(0).toMap().value(QStringLiteral("alg")).toInteger(), qint64(ctap::ES256));
+        QCOMPARE(status(run(a, ctap::MakeCredential, makeCredentialParams(QStringLiteral("example.com"), "u", cdh, true, false,
+                                                                          {pkParam(ctap::EdDSA)}))),
+                 ctap::ErrUnsupportedAlgorithm);
+
+        const QByteArray mc = run(a, ctap::MakeCredential, makeCredentialParams(QStringLiteral("example.com"), "u", cdh, true, false,
+                                                                                {pkParam(ctap::EdDSA), pkParam(ctap::ES256)}));
+        QCOMPARE(status(mc), ctap::Ok);
+        QCOMPARE(hw.creates, 1);
+        const QByteArray authData = body(mc).value(2).toByteArray();
+        const auto ad = parseAuthData(authData);
+        QVERIFY(crypto::verify(ad.publicKeyCose, authData + cdh, body(mc).value(3).toMap().value(QStringLiteral("sig")).toByteArray()));
+
+        const auto rec = store.find(QStringLiteral("example.com"), ad.credentialId);
+        QVERIFY(rec);
+        QCOMPARE(rec->keyProtection, protection::Tpm2);
+        QVERIFY(store.rawEntries().value(record::entryKey(QStringLiteral("example.com"), ad.credentialId)).contains(QStringLiteral("\"schema\":2")));
+
+        const QByteArray ga = run(a, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh));
+        QCOMPARE(status(ga), ctap::Ok);
+        QVERIFY(crypto::verify(rec->publicKeyCose, body(ga).value(2).toByteArray() + cdh, body(ga).value(3).toByteArray()));
+        QCOMPARE(hw.signs, 2); // attestation + assertion
+
+        // A TPM credential cannot be used without TPM access (fails closed).
+        QCOMPARE(status(run(*auth, ctap::GetAssertion, getAssertionParams(QStringLiteral("example.com"), cdh))), ctap::ErrOther);
+    }
+
+    void walletRecordsStaySchema1()
+    {
+        const QByteArray id = createCredential(QStringLiteral("example.com"), "u");
+        QVERIFY(store.rawEntries().value(record::entryKey(QStringLiteral("example.com"), id)).contains(QStringLiteral("\"schema\":1")));
+    }
+
+    void ecdsaRawToDer()
+    {
+        auto kp = crypto::generateKeyPair(ctap::ES256);
+        const QByteArray msg = "hello";
+        const auto der = crypto::sign(kp->privateKeyPkcs8, ctap::ES256, msg);
+        // DER -> (r, s) via OpenSSL, then back with our converter
+        const auto *p = reinterpret_cast<const unsigned char *>(der->constData());
+        ECDSA_SIG *sig = d2i_ECDSA_SIG(nullptr, &p, der->size());
+        QByteArray rs(64, '\0');
+        BN_bn2binpad(ECDSA_SIG_get0_r(sig), reinterpret_cast<unsigned char *>(rs.data()), 32);
+        BN_bn2binpad(ECDSA_SIG_get0_s(sig), reinterpret_cast<unsigned char *>(rs.data()) + 32, 32);
+        ECDSA_SIG_free(sig);
+        const auto back = crypto::ecdsaRawToDer(rs);
+        QVERIFY(back);
+        QVERIFY(crypto::verify(kp->publicKeyCose, msg, *back));
+        QVERIFY(!crypto::ecdsaRawToDer(rs.left(63)));
     }
 
     void authenticatorSelection()

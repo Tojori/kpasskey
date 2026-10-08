@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+[Unit]
+Description=kpasskey TPM key helper (connection %i)
+CollectMode=inactive-or-failed
+
+[Service]
+ExecStart=@CMAKE_INSTALL_FULL_LIBEXECDIR@/kpasskey-tpm-helper
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+User=kpasskey-tpm
+Group=kpasskey-tpm
+SupplementaryGroups=tss
+
+# Only the TPM resource manager, nothing else
+DevicePolicy=closed
+DeviceAllow=/dev/tpmrm0 rw
+
+# Sandbox
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+LimitCORE=0
+# The TCTI loader dlopen()s libtss2-tcti-device from /usr/lib.

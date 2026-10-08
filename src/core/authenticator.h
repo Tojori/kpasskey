@@ -2,6 +2,7 @@
 #pragma once
 
 #include "credential_store.h"
+#include "hardware_keys.h"
 #include "pin_uv.h"
 #include "user_interaction.h"
 
@@ -52,6 +53,11 @@ public:
         // hidraw node test whether a credential exists. Browsers use them for
         // excludeList pre-flight; disabling only answers NO_CREDENTIALS.
         bool allowSilentAssertions = true;
+        // Access to hardware (TPM) keys; needed to use TPM-protected credentials.
+        HardwareKeyStore *hardwareKeys = nullptr;
+        // Create new credentials in hardware (requires hardwareKeys); then only
+        // ES256 is offered. Existing wallet-protected credentials keep working.
+        bool createInHardware = false;
     };
 
     Authenticator(CredentialStore *store, PresencePrompter *prompter, UserVerifier *verifier, Options options,
@@ -74,6 +80,8 @@ private:
     quint8 checkPinUvAuth(const QCborValue &param, const QCborValue &protocol, const QByteArray &clientDataHash,
                           quint8 permission, const QString &rpId, bool *uvDone);
     bool uvSupported() const;
+    QList<int> supportedAlgorithms() const;
+    std::optional<QByteArray> signWith(const CredentialRecord &r, const QByteArray &data);
     void makeCredential(const QCborMap &params);
     void getAssertion(const QCborMap &params);
     void makeCredentialConfirmed(const std::shared_ptr<Pending> &p);

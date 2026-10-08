@@ -7,6 +7,7 @@
 #include "kwallet/kwallet_store.h"
 #include "manager_dbus.h"
 #include "session_watcher.h"
+#include "tpm/tpm_client.h"
 #include "ui/presence_dialog.h"
 #include "verification/polkit_verifier.h"
 
@@ -65,8 +66,12 @@ int main(int argc, char **argv)
     parser.addOption(denySilent);
     QCommandLineOption directUhid(QStringLiteral("direct-uhid"),
                                   QStringLiteral("Open /dev/uhid directly instead of using kpasskey-uhid-helper (development only)."));
+    QCommandLineOption keyBackend(QStringLiteral("key-backend"),
+                                  QStringLiteral("Where new private keys live: auto (TPM if kpasskey-tpm-helper is installed), tpm, software."),
+                                  QStringLiteral("backend"), QStringLiteral("auto"));
     parser.addOption(ignoreSession);
     parser.addOption(directUhid);
+    parser.addOption(keyBackend);
     parser.process(app);
 
     // Single instance: two daemons would race on sign counters.
@@ -100,6 +105,26 @@ int main(int argc, char **argv)
 
     Authenticator::Options options;
     options.allowSilentAssertions = !parser.isSet(denySilent);
+    // Existing TPM-protected credentials need the TPM client even when new keys
+    // are created in software, so it is always constructed when available.
+    TpmClient tpm;
+    if (TpmClient::isAvailable()) {
+        options.hardwareKeys = &tpm;
+    }
+    const QString backend = parser.value(keyBackend);
+    if (backend == QLatin1String("tpm") || (backend == QLatin1String("auto") && TpmClient::isAvailable())) {
+        if (!TpmClient::isAvailable()) {
+            qCCritical(KPASSKEY_LOG) << "--key-backend=tpm, but kpasskey-tpm-helper is not installed";
+            return 4;
+        }
+        options.createInHardware = true;
+        qCInfo(KPASSKEY_LOG) << "new passkeys are created in the TPM (ES256 only)";
+    } else if (backend == QLatin1String("software") || backend == QLatin1String("auto")) {
+        qCInfo(KPASSKEY_LOG) << "new passkeys are created in software and protected by KWallet only";
+    } else {
+        qCCritical(KPASSKEY_LOG) << "unknown --key-backend" << backend;
+        return 4;
+    }
     Authenticator authenticator(store, &prompter, verifier, options);
     CtapHid hid(&authenticator);
     std::unique_ptr<HidTransport> transport;

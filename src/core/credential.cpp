@@ -2,6 +2,7 @@
 #include "credential.h"
 
 #include "ctap_constants.h"
+#include "hardware_keys.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -17,7 +18,7 @@ QString CredentialRecord::credentialIdB64() const
 CredentialMetadata metadataOf(const CredentialRecord &r)
 {
     return {r.credentialIdB64(), r.rpId, r.userName, r.userDisplayName,
-            r.created.toSecsSinceEpoch(), r.lastUsed.isValid() ? r.lastUsed.toSecsSinceEpoch() : 0};
+            r.created.toSecsSinceEpoch(), r.lastUsed.isValid() ? r.lastUsed.toSecsSinceEpoch() : 0, r.keyProtection};
 }
 
 bool isPlausibleRpId(const QString &rpId)
@@ -57,7 +58,7 @@ constexpr auto kLastUsed = "last_used";
 
 constexpr auto kTypeValue = "webauthn.public-key";
 constexpr auto kFormatPkcs8 = "pkcs8-der";
-constexpr auto kProtectionWallet = "kwallet";
+constexpr auto kFormatTpmBlob = "tpm2b-public-private";
 
 std::optional<QByteArray> requireB64(const QJsonObject &o, const char *key)
 {
@@ -89,13 +90,16 @@ QString entryKey(const QString &rpId, const QByteArray &credentialId)
 
 QString encode(const CredentialRecord &r)
 {
+    const bool tpm = r.keyProtection == protection::Tpm2;
     QJsonObject pk;
-    pk.insert(QLatin1String(kPkFormat), QLatin1String(kFormatPkcs8));
-    pk.insert(QLatin1String(kPkProtection), QLatin1String(kProtectionWallet));
+    pk.insert(QLatin1String(kPkFormat), QLatin1String(tpm ? kFormatTpmBlob : kFormatPkcs8));
+    pk.insert(QLatin1String(kPkProtection), r.keyProtection);
     pk.insert(QLatin1String(kPkData), b64url(r.privateKeyPkcs8.bytes()));
 
     QJsonObject o;
-    o.insert(QLatin1String(kSchema), CredentialSchemaVersion);
+    // Wallet-protected records stay at v1 so that older builds keep reading them;
+    // TPM records need v2 (older builds skip them without touching them).
+    o.insert(QLatin1String(kSchema), tpm ? 2 : 1);
     o.insert(QLatin1String(kType), QLatin1String(kTypeValue));
     o.insert(QLatin1String(kCredId), b64url(r.credentialId));
     o.insert(QLatin1String(kRpId), r.rpId);
@@ -143,8 +147,8 @@ std::optional<CredentialRecord> decode(const QString &key, const QString &json, 
     if (schema.toInt() > CredentialSchemaVersion) {
         return fail(DecodeError::UnsupportedSchema);
     }
-    // Migration hook: schema < CredentialSchemaVersion would be upgraded here.
-    if (schema.toInt() != 1 || o.value(QLatin1String(kType)).toString() != QLatin1String(kTypeValue)) {
+    // Migration hook: older schemas would be upgraded here (v1 needs none).
+    if (schema.toInt() < 1 || o.value(QLatin1String(kType)).toString() != QLatin1String(kTypeValue)) {
         return fail(DecodeError::Malformed);
     }
 
@@ -157,9 +161,12 @@ std::optional<CredentialRecord> decode(const QString &key, const QString &json, 
     const QJsonValue rpId = o.value(QLatin1String(kRpId));
     const QJsonValue alg = o.value(QLatin1String(kAlg));
     const QJsonValue count = o.value(QLatin1String(kSignCount));
+    const QString prot = pk.value(QLatin1String(kPkProtection)).toString();
+    const QString format = pk.value(QLatin1String(kPkFormat)).toString();
+    const bool walletKey = prot == protection::Wallet && format == QLatin1String(kFormatPkcs8);
+    const bool tpmKey = prot == protection::Tpm2 && format == QLatin1String(kFormatTpmBlob) && schema.toInt() >= 2;
     if (!credId || !userHandle || !pub || !priv || !rpId.isString() || !alg.isDouble() || !count.isDouble()
-        || pk.value(QLatin1String(kPkFormat)).toString() != QLatin1String(kFormatPkcs8)
-        || pk.value(QLatin1String(kPkProtection)).toString() != QLatin1String(kProtectionWallet)) {
+        || !(walletKey || tpmKey)) {
         return fail(DecodeError::Malformed);
     }
     const double c = count.toDouble();
@@ -177,6 +184,7 @@ std::optional<CredentialRecord> decode(const QString &key, const QString &json, 
     r.coseAlg = alg.toInt();
     r.publicKeyCose = *pub;
     r.privateKeyPkcs8 = SecretBytes(std::move(*priv));
+    r.keyProtection = prot;
     r.signCount = quint32(c);
     r.discoverable = o.value(QLatin1String(kDiscoverable)).toBool(true);
     r.uvAtCreation = o.value(QLatin1String(kUvAtCreation)).toBool(false);
@@ -188,8 +196,10 @@ std::optional<CredentialRecord> decode(const QString &key, const QString &json, 
     if (!isPlausibleRpId(r.rpId) || key != entryKey(r.rpId, r.credentialId)) {
         return fail(DecodeError::Inconsistent);
     }
-    // ... and the stored public key must match the private key.
-    const auto derived = crypto::publicKeyCoseFromPrivate(r.privateKeyPkcs8, r.coseAlg);
+    // ... and the stored public key must match the private key (for TPM keys:
+    // the public area of the key blob).
+    const auto derived = tpmKey ? (r.coseAlg == ctap::ES256 ? tpmblob::publicKeyCose(r.privateKeyPkcs8.bytes()) : std::nullopt)
+                                : crypto::publicKeyCoseFromPrivate(r.privateKeyPkcs8, r.coseAlg);
     if (!derived || *derived != r.publicKeyCose) {
         return fail(DecodeError::Inconsistent);
     }

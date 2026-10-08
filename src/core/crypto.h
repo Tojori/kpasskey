@@ -68,6 +68,10 @@ std::optional<QByteArray> aes256CbcDecrypt(const QByteArray &key, const QByteArr
 QByteArray hmacSha256(const QByteArray &key, const QByteArray &data);
 bool constantTimeEquals(const QByteArray &a, const QByteArray &b);
 
+// Converts a raw ECDSA P-256 signature (r || s, 32 bytes each, as returned by
+// a TPM) into the ASN.1 DER form WebAuthn uses.
+std::optional<QByteArray> ecdsaRawToDer(const QByteArray &rs);
+
 QByteArray randomBytes(int count);
 QByteArray sha256(const QByteArray &data);
 

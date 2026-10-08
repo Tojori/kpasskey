@@ -10,8 +10,14 @@
 
 namespace kpasskey {
 
-// Current on-disk schema version; see docs/storage-format.md.
-constexpr int CredentialSchemaVersion = 1;
+// Newest on-disk schema version this build understands; see
+// docs/storage-format.md. v1: key in KWallet (PKCS#8). v2: adds TPM-wrapped keys.
+constexpr int CredentialSchemaVersion = 2;
+
+namespace protection {
+inline const QString Wallet = QStringLiteral("kwallet"); // PKCS#8, protected by KWallet only
+inline const QString Tpm2 = QStringLiteral("tpm2");      // TPM key blob, unusable on other machines
+}
 
 struct CredentialRecord {
     QByteArray credentialId;      // 32 random bytes
@@ -22,7 +28,8 @@ struct CredentialRecord {
     QString userDisplayName;      // user.displayName, site-controlled
     int coseAlg = 0;
     QByteArray publicKeyCose;
-    SecretBytes privateKeyPkcs8;
+    SecretBytes privateKeyPkcs8;  // protection::Wallet: PKCS#8 DER; protection::Tpm2: TPM key blob
+    QString keyProtection = protection::Wallet;
     quint32 signCount = 0;
     bool discoverable = true;     // resident key
     bool uvAtCreation = false;    // whether UV was performed when the credential was created
@@ -41,6 +48,7 @@ struct CredentialMetadata {
     QString userDisplayName;
     qint64 created = 0;
     qint64 lastUsed = 0;
+    QString keyProtection;
 };
 CredentialMetadata metadataOf(const CredentialRecord &r);
 

@@ -50,13 +50,13 @@ Der wichtigste Befund vorweg: **Auf einem klassischen Linux-Desktop sind alle ni
 1. **Szenario:** Malware läuft als derselbe Benutzer.
 2. **Auswirkung:** Sie kann a) KWallet-Einträge lesen und damit die privaten Schlüssel stehlen, b) über hidraw Anfragen stellen, c) Dialoge nachahmen.
 3. **Schutz:** b) braucht UP/UV im Dialog. `RLIMIT_CORE=0` verhindert Core-Dumps mit Schlüsselmaterial; ptrace-Attach durch Geschwisterprozesse verhindert Yama (`kernel.yama.ptrace_scope ≥ 1`, Standard auf Arch/CachyOS).
-4. **Restrisiko:** **hoch, und unvermeidbar ohne Hardware-Bindung**. Lösung: Phase 3, private Schlüssel nur TPM-gewrappt speichern. Dann bleibt ein Signier-Orakel mit UP/UV-Pflicht, aber kein Schlüsseldiebstahl.
+4. **Restrisiko:** Mit TPM-Schlüsseln (Phase 3, umgesetzt, Standard sobald `kpasskey-tpm-helper` installiert ist): **kein Schlüsseldiebstahl mehr** möglich, das Wallet enthält nur TPM-Blobs. Es bleibt ein Signier-Orakel: Malware desselben Benutzers kann über den Helfer signieren lassen. Für eine gültige Anmeldung braucht sie aber weiterhin UP/UV über die Dialoge von kpasskeyd, oder sie spricht den Helfer direkt an und umgeht diese Dialoge. Gegen Letzteres hilft erst eine Bindung der Signatur an die Benutzerverifikation (TPM-Policy, Roadmap). Ohne TPM (Software-Schlüssel) bleibt das Risiko **hoch**.
 
 ### T6 Zugriff auf das Home-Verzeichnis (offline, z. B. gestohlene Festplatte/Backup)
 1. **Szenario:** Kopie von `~/.local/share/kwalletd/`.
 2. **Auswirkung:** Die Wallet-Datei ist verschlüsselt. Ihre Stärke hängt am Wallet-Passwort. Mit `pam_kwallet` ist das das Login-Passwort, gegen das ein Offline-Brute-Force möglich ist.
 3. **Schutz:** KWallet-Verschlüsselung; Empfehlung: Festplattenverschlüsselung (LUKS), starkes Passwort.
-4. **Restrisiko:** mittel. Mit TPM-Wrapping (Phase 3) sind die Schlüssel ohne das konkrete Gerät wertlos.
+4. **Restrisiko:** Mit TPM-Schlüsseln **gering**: Die Blobs im Wallet sind ohne genau dieses TPM wertlos. Mit Software-Schlüsseln mittel.
 
 ### T7 Zugriff auf KWallet (online) / T8 gestohlene KWallet-Daten
 Siehe T5/T6. Zusätzlich sind Einträge **integritätsgeprüft**: Eintragsname ↔ `rp_id`/`credential_id`, und der Public Key wird aus dem Private Key neu abgeleitet und verglichen. Ein umbenannter oder vertauschter Eintrag wird verworfen (Tests `recordMovedToOtherRpIsRejected`, `swappedPublicKeyIsRejected`). Gegen jemanden mit Schreibzugriff schützt das nicht vollständig: Er kann ein selbst erzeugtes, konsistentes Credential einschleusen, also eine Art „Session Fixation“. Abhilfe in Phase 3: ein MAC über den Datensatz mit einem TPM-gebundenen Schlüssel.
@@ -109,12 +109,19 @@ Die Verwaltungs-API liegt auf dem Session-Bus und ist damit nur für Prozesse de
   Restrisiko: Jeder lokale Benutzer mit aktiver Sitzung kann sich ein eigenes FIDO-Gerät anlegen lassen. Mehr als ein Security Key ist damit nicht zu gewinnen. Der Direktmodus (`kpasskeyd --direct-uhid` mit `70-kpasskey-uhid-dev.rules`) bleibt nur für die Entwicklung und hat das alte Risiko: Eingabe-Injektion durch alle Prozesse des aktiven Benutzers.
 - Mehrere Benutzer an einem Seat: **behoben (Phase 1).** `SessionWatcher` beobachtet über logind die grafische Sitzung des Benutzers (`User.Display` → `Session.Active`). Wird sie inaktiv (Benutzerwechsel, Sperrbildschirm eines anderen Seats), bricht der Daemon offene Zeremonien ab und entfernt das uhid-Gerät; bei Reaktivierung legt er es neu an. Ist logind nicht erreichbar, wird kein Gerät angelegt (fail closed). Restrisiko: Das Zeitfenster zwischen Sitzungswechsel und Signal liegt im Millisekundenbereich.
 
-### T16 TPM-Angriffe (Phase 3)
-- Signier-Orakel: Ein TPM verhindert Schlüsseldiebstahl, nicht den Missbrauch durch einen online-Angreifer mit gleichem UID. UP/UV bleibt nötig.
-- Bus-Sniffing (diskretes TPM, LPC/SPI): TPM2-Sessions mit Parameter-Verschlüsselung verwenden.
-- Wörterbuchangriffe auf TPM-Auth-Werte: DA-Lockout des TPM nutzen.
-- Firmware-TPM-Schwachstellen und Rollback: Bindung an PCRs ist umstritten (Updates brechen den Zugriff). Policy mit `PolicyAuthorize` oder ohne PCR, dafür mit Auth-Wert.
-- Verlust von TPM/Mainboard bedeutet Verlust aller Passkeys. Das muss kommuniziert werden (BE=0, also gerätegebunden). Passkeys sollten daher nie der einzige Faktor eines Kontos sein.
+### T16 TPM (Phase 3, umgesetzt)
+
+Aufbau: `kpasskey-tpm-helper` läuft als Systembenutzer `kpasskey-tpm` (Gruppe `tss`), socket-aktiviert und sandboxed (`DevicePolicy=closed`, nur `/dev/tpmrm0`). Nur er hat TPM-Zugriff; Benutzer brauchen **nicht** in die Gruppe `tss`. Das ist wichtig, weil `tss`-Mitglieder bei leerem Lockout-Auth das TPM sogar zurücksetzen könnten.
+
+| Angriff | Schutz | Restrisiko |
+|---|---|---|
+| Wallet/Home kopiert, Offline-Angriff | `fixedTPM`-Schlüssel, privater Teil nur TPM-verschlüsselt | keins für die Passkeys |
+| Benutzer B nutzt Blobs von Benutzer A über den Helfer | authValue = TPM-HMAC(„kpasskey-key-auth-v1“ ‖ uid aus `SO_PEERCRED`), mit einem nicht speicherbaren HMAC-Primärschlüssel; falsche uid → `TPM_RC_AUTH_FAIL` | keins |
+| DA-Lockout als DoS (falsche authValues provozieren) | Schlüssel sind `noDA`; der authValue hat 256 Bit und wird im TPM abgeleitet, Raten ist aussichtslos | keins |
+| Bus-Sniffing (diskretes TPM, LPC/SPI) | gesalzene HMAC-Session mit Parameter-Verschlüsselung (AES-128-CFB) für Create, Load, Sign und HMAC | Angreifer mit aktivem Bus-Zugriff (Interposer) sind nicht vollständig abgedeckt |
+| Signier-Orakel durch Malware desselben Benutzers | Helfer prüft aktive lokale Sitzung | siehe T5; Bindung an UV via TPM-Policy ist Roadmap |
+| TPM-Reset / Mainboard-Tausch / Owner-Hierarchie-Passwort | – | **Verlust aller TPM-Passkeys** (BE=0, gerätegebunden). Ein zweiter Authenticator pro Konto wird empfohlen. Ist die Owner-Hierarchie passwortgeschützt, kann der Helfer keine Schlüssel erzeugen. |
+| Firmware-TPM-Schwachstellen | – | außerhalb des Einflusses von kpasskey |
 
 ## Umsetzung im Code
 

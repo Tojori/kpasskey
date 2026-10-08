@@ -191,6 +191,26 @@ void Authenticator::process(const QByteArray &request, std::function<void(QByteA
     });
 }
 
+QList<int> Authenticator::supportedAlgorithms() const
+{
+    if (m_options.createInHardware && m_options.hardwareKeys) {
+        return {ES256}; // TPMs offer ECC P-256; no Ed25519
+    }
+    return {ES256, EdDSA};
+}
+
+std::optional<QByteArray> Authenticator::signWith(const CredentialRecord &r, const QByteArray &data)
+{
+    if (r.keyProtection == protection::Tpm2) {
+        if (!m_options.hardwareKeys || r.coseAlg != ES256) {
+            qCWarning(KPASSKEY_LOG) << "TPM-protected credential but no TPM key store available";
+            return std::nullopt;
+        }
+        return m_options.hardwareKeys->signDigest(r.privateKeyPkcs8.bytes(), crypto::sha256(data));
+    }
+    return crypto::sign(r.privateKeyPkcs8, r.coseAlg, data);
+}
+
 bool Authenticator::uvSupported() const
 {
     return m_verifier && m_verifier->isAvailable();
@@ -221,7 +241,7 @@ QByteArray Authenticator::getInfo() const
     }
     info.insert(9, QCborArray{QStringLiteral("usb")});
     QCborArray algs;
-    for (int alg : {int(ES256), int(EdDSA)}) {
+    for (int alg : supportedAlgorithms()) {
         QCborMap m; // canonical order: "alg", "type"
         m.insert(QStringLiteral("alg"), alg);
         m.insert(QStringLiteral("type"), QStringLiteral("public-key"));
@@ -464,7 +484,7 @@ void Authenticator::makeCredential(const QCborMap &params)
             continue;
         }
         const int alg = int(m.value(QLatin1String("alg")).toInteger(0));
-        if (crypto::isSupportedAlg(alg)) {
+        if (supportedAlgorithms().contains(alg)) {
             p->alg = alg;
             break;
         }
@@ -546,14 +566,28 @@ void Authenticator::makeCredential(const QCborMap &params)
 
 void Authenticator::makeCredentialConfirmed(const std::shared_ptr<Pending> &p)
 {
-    auto keyPair = crypto::generateKeyPair(p->alg);
-    if (!keyPair) {
-        qCWarning(KPASSKEY_LOG) << "key generation failed";
-        finish(ErrOther);
-        return;
-    }
-
     CredentialRecord r;
+    if (m_options.createInHardware && m_options.hardwareKeys) {
+        auto key = m_options.hardwareKeys->createKey();
+        if (!key) {
+            qCWarning(KPASSKEY_LOG) << "TPM key creation failed";
+            finish(ErrOther);
+            return;
+        }
+        r.publicKeyCose = key->publicKeyCose;
+        r.privateKeyPkcs8 = SecretBytes(key->blob);
+        r.keyProtection = protection::Tpm2;
+    } else {
+        auto keyPair = crypto::generateKeyPair(p->alg);
+        if (!keyPair) {
+            qCWarning(KPASSKEY_LOG) << "key generation failed";
+            finish(ErrOther);
+            return;
+        }
+        r.publicKeyCose = keyPair->publicKeyCose;
+        r.privateKeyPkcs8 = keyPair->privateKeyPkcs8;
+        r.keyProtection = protection::Wallet;
+    }
     r.credentialId = crypto::randomBytes(CredentialIdSize);
     r.rpId = p->rpId;
     r.rpName = p->rpName;
@@ -561,8 +595,6 @@ void Authenticator::makeCredentialConfirmed(const std::shared_ptr<Pending> &p)
     r.userName = p->userName;
     r.userDisplayName = p->userDisplayName;
     r.coseAlg = p->alg;
-    r.publicKeyCose = keyPair->publicKeyCose;
-    r.privateKeyPkcs8 = keyPair->privateKeyPkcs8;
     r.signCount = 0;
     r.discoverable = p->rk;
     r.uvAtCreation = p->uv;
@@ -598,7 +630,7 @@ void Authenticator::makeCredentialConfirmed(const std::shared_ptr<Pending> &p)
 
     // "packed" self attestation: signed with the credential key itself, which
     // reveals nothing beyond the new public key.
-    const auto sig = crypto::sign(r.privateKeyPkcs8, r.coseAlg, authData + p->clientDataHash);
+    const auto sig = signWith(r, authData + p->clientDataHash);
     if (!sig) {
         m_store->remove(r.credentialIdB64());
         finish(ErrOther);
@@ -775,7 +807,7 @@ void Authenticator::getAssertionConfirmed(const std::shared_ptr<Pending> &p, int
         flags |= FlagUV;
     }
     const QByteArray authData = crypto::sha256(r.rpId.toUtf8()) + QByteArray(1, char(flags)) + bigEndian32(r.signCount);
-    const auto sig = crypto::sign(r.privateKeyPkcs8, r.coseAlg, authData + p->clientDataHash);
+    const auto sig = signWith(r, authData + p->clientDataHash);
     if (!sig) {
         finish(ErrOther);
         return;

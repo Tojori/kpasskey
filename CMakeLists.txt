@@ -13,6 +13,8 @@ option(KPASSKEY_SANITIZE "Build everything with ASan + UBSan" OFF)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core DBus)
 find_package(OpenSSL 3.0 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(TSS2_MU REQUIRED IMPORTED_TARGET tss2-mu)
 
 add_compile_definitions(
     QT_NO_CAST_FROM_ASCII
@@ -41,15 +43,15 @@ add_library(kpasskeycore STATIC
     src/core/crypto.cpp
     src/core/logging.cpp
     src/core/pin_uv.cpp
+    src/core/hardware_keys.cpp
     src/hid/ctaphid.cpp
 )
 target_include_directories(kpasskeycore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(kpasskeycore PUBLIC Qt6::Core OpenSSL::Crypto)
+target_link_libraries(kpasskeycore PUBLIC Qt6::Core OpenSSL::Crypto PkgConfig::TSS2_MU)
 set_target_properties(kpasskeycore PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(KPASSKEY_BUILD_DAEMON)
     find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
-    find_package(PkgConfig REQUIRED)
     pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
     find_package(KF6Wallet REQUIRED)
     find_package(KF6I18n REQUIRED)
@@ -62,6 +64,7 @@ if(KPASSKEY_BUILD_DAEMON)
         src/hid/uhid_device.cpp
         src/hid/helper_device.cpp
         src/hid/hid_transport.h
+        src/tpm/tpm_client.cpp
         src/kwallet/kwallet_store.cpp
         src/ui/presence_dialog.cpp
         src/verification/polkit_verifier.cpp
@@ -74,10 +77,18 @@ if(KPASSKEY_BUILD_DAEMON)
     target_include_directories(kpasskey-uhid-helper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(kpasskey-uhid-helper PRIVATE PkgConfig::SYSTEMD)
 
+    # TPM 2.0 key helper: the only component with TPM access (docs/security.md T5/T6)
+    pkg_check_modules(TSS2 REQUIRED IMPORTED_TARGET tss2-esys tss2-tctildr tss2-mu)
+    add_executable(kpasskey-tpm-helper src/helper/tpm_helper.cpp)
+    target_include_directories(kpasskey-tpm-helper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(kpasskey-tpm-helper PRIVATE PkgConfig::SYSTEMD PkgConfig::TSS2)
+
     include(GNUInstallDirs)
-    install(TARGETS kpasskeyd kpasskey-uhid-helper DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
+    install(TARGETS kpasskeyd kpasskey-uhid-helper kpasskey-tpm-helper DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
     configure_file(data/kpasskey-uhid@.service.in ${CMAKE_CURRENT_BINARY_DIR}/kpasskey-uhid@.service @ONLY)
+    configure_file(data/kpasskey-tpm@.service.in ${CMAKE_CURRENT_BINARY_DIR}/kpasskey-tpm@.service @ONLY)
     install(FILES data/kpasskey-uhid.socket ${CMAKE_CURRENT_BINARY_DIR}/kpasskey-uhid@.service
+                  data/kpasskey-tpm.socket ${CMAKE_CURRENT_BINARY_DIR}/kpasskey-tpm@.service
             DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/system)
     install(FILES data/kpasskey-sysusers.conf DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/sysusers.d RENAME kpasskey.conf)
     install(FILES data/kpasskey-tmpfiles.conf DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/tmpfiles.d RENAME kpasskey.conf)

@@ -112,3 +112,4 @@ Daher **[projektspezifisch]**:
 | polkit-kde-agent | Benutzer | Standard (vertrauenswürdiger Auth-Dialog) |
 | kwalletd6 / ksecretd | Benutzer | Standard |
 | kpasskey-uhid-helper | Systembenutzer `kpasskey-uhid`, socket-aktiviert pro Verbindung, sandboxed | einziger Zugriff auf `/dev/uhid`; kann **ausschließlich** das feste FIDO-Gerät erzeugen und Reports weiterreichen |
+| kpasskey-tpm-helper | Systembenutzer `kpasskey-tpm` (Gruppe `tss`), socket-aktiviert, sandboxed | einziger Zugriff auf `/dev/tpmrm0`; erzeugt nicht exportierbare P-256-Schlüssel und signiert Digests (uid-gebunden) |

@@ -72,11 +72,29 @@ Was **nicht** gespeichert wird: Challenges, clientDataJSON, Origins, Browserinfo
 
 Ungültige Einträge werden übersprungen (Log ohne Inhalt) und niemals überschrieben.
 
+## Schema v2: TPM-geschützte Schlüssel
+
+Bei `--key-backend=tpm` (Standard `auto`, sobald `kpasskey-tpm-helper` installiert ist) entstehen neue Schlüssel **im TPM**. Der Eintrag unterscheidet sich nur im Objekt `private_key`:
+
+```json
+"schema": 2,
+"private_key": {
+  "format": "tpm2b-public-private",
+  "protection": "tpm2",
+  "data": "<base64url: TPM2B_PUBLIC || TPM2B_PRIVATE (TPM-Marshalling)>"
+}
+```
+
+- `TPM2B_PRIVATE` ist vom TPM mit dem Speicher-Primärschlüssel verschlüsselt. Auf einem anderen Rechner oder nach einem TPM-Reset ist das Blob **wertlos**. Ein Diebstahl des Wallets bzw. des Home-Verzeichnisses verrät keinen nutzbaren Schlüssel.
+- Nur ES256 (TPMs bieten kein Ed25519).
+- Validierung beim Laden: Das Blob wird mit `tss2-mu` entpackt. Geprüft werden Typ ECC P-256, ECDSA/SHA-256, `fixedTPM`/`fixedParent`/`sign`, nicht `restricted`/`decrypt`, und der öffentliche Punkt muss byte-gleich mit `public_key_cose` sein.
+- Wallet-geschützte Einträge bleiben bei **Schema 1**. Ältere Builds lesen sie weiter und überspringen v2-Einträge, ohne sie anzufassen.
+
 ## Migration und Versionierung
 
 - `schema > 1` (von einer neueren Version geschrieben): Der Eintrag wird **nicht angefasst** (`UnsupportedSchema`), damit kein Downgrade Daten zerstört.
 - `schema < aktuell`: Migrationskette in `record::decode` (`v1→v2→…`). Geschrieben wird immer im aktuellen Schema, und zwar erst beim nächsten regulären Update des Eintrags (Lazy Migration).
-- Geplant für v2: `private_key.protection = "tpm2"` mit `format = "tpm2-blob"` (TPM2B_PUBLIC + TPM2B_PRIVATE) sowie ein Integritäts-MAC über den Datensatz.
+- v2 (umgesetzt): `private_key.protection = "tpm2"`, siehe oben. Geplant für v3: ein Integritäts-MAC über den Datensatz mit einem TPM-gebundenen Schlüssel.
 
 ## AAGUID
 

@@ -17,8 +17,8 @@ if [[ "$EUID" -ne 0 ]]; then
     echo "must run as root" >&2
     exit 1
 fi
-if [[ ! -x "$build_dir/kpasskeyd" || ! -x "$build_dir/kpasskey-uhid-helper" ]]; then
-    echo "kpasskeyd / kpasskey-uhid-helper missing in $build_dir - build first" >&2
+if [[ ! -x "$build_dir/kpasskeyd" || ! -x "$build_dir/kpasskey-uhid-helper" || ! -x "$build_dir/kpasskey-tpm-helper" ]]; then
+    echo "kpasskeyd / helpers missing in $build_dir - build first" >&2
     exit 1
 fi
 id "$user" >/dev/null
@@ -46,13 +46,18 @@ udevadm settle
 ls -l /dev/uhid
 getfacl -p /dev/uhid 2>/dev/null | grep -E "^(user|group):" || true
 
-echo "== helper socket"
+echo "== helper sockets"
 systemctl daemon-reload
 systemctl enable --now kpasskey-uhid.socket
+if [[ -e /dev/tpmrm0 ]] && getent group tss >/dev/null; then
+    systemctl enable --now kpasskey-tpm.socket
+else
+    echo "no TPM 2.0 resource manager (/dev/tpmrm0) or group tss: TPM key helper not enabled"
+fi
 ls -l /run/kpasskey/
 
 echo
 echo "Done. As $user (no root):"
 echo "  systemctl --user daemon-reload && systemctl --user restart kpasskeyd.service"
 echo "  journalctl --user -u kpasskeyd -f        # daemon"
-echo "  journalctl -u 'kpasskey-uhid@*' -f       # helper"
+echo "  journalctl -u 'kpasskey-uhid@*' -u 'kpasskey-tpm@*' -f   # helpers"

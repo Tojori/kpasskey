@@ -5,11 +5,16 @@
 #include "core/authenticator.h"
 #include "core/crypto.h"
 #include "core/ctap_constants.h"
+#include "core/hardware_keys.h"
 
 #include <QCborArray>
 #include <QCborMap>
 #include <QCborValue>
+#include <QHash>
 #include <QtEndian>
+
+#include <openssl/evp.h>
+#include <openssl/x509.h>
 
 namespace kpasskey::test {
 
@@ -49,6 +54,65 @@ public:
         done(result);
     }
     void cancel() override { }
+};
+
+// Stands in for the TPM: keys are software keys, but blobs have the real
+// TPM2B_PUBLIC || TPM2B_PRIVATE layout so record validation is exercised.
+class FakeHardwareKeyStore : public HardwareKeyStore
+{
+public:
+    int creates = 0;
+    int signs = 0;
+    bool fail = false;
+
+    std::optional<Key> createKey() override
+    {
+        ++creates;
+        if (fail) {
+            return std::nullopt;
+        }
+        auto kp = crypto::generateKeyPair(ctap::ES256);
+        const QCborMap cose = QCborValue::fromCbor(kp->publicKeyCose).toMap();
+        const QByteArray id = crypto::randomBytes(16);
+        auto blob = tpmblob::make(cose.value(-2).toByteArray(), cose.value(-3).toByteArray(), id);
+        m_keys.insert(*blob, kp->privateKeyPkcs8);
+        return Key{*blob, kp->publicKeyCose};
+    }
+
+    std::optional<QByteArray> signDigest(const QByteArray &blob, const QByteArray &digest) override
+    {
+        ++signs;
+        const auto it = m_keys.constFind(blob);
+        if (fail || it == m_keys.constEnd() || digest.size() != 32) {
+            return std::nullopt;
+        }
+        const auto *p = reinterpret_cast<const unsigned char *>(it->bytes().constData());
+        PKCS8_PRIV_KEY_INFO *p8 = d2i_PKCS8_PRIV_KEY_INFO(nullptr, &p, it->bytes().size());
+        EVP_PKEY *pkey = p8 ? EVP_PKCS82PKEY(p8) : nullptr;
+        PKCS8_PRIV_KEY_INFO_free(p8);
+        EVP_PKEY_CTX *ctx = pkey ? EVP_PKEY_CTX_new(pkey, nullptr) : nullptr;
+        size_t len = 0;
+        QByteArray sig;
+        if (ctx && EVP_PKEY_sign_init(ctx) == 1 && EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha256()) == 1
+            && EVP_PKEY_sign(ctx, nullptr, &len, reinterpret_cast<const unsigned char *>(digest.constData()), 32) == 1) {
+            sig.resize(qsizetype(len));
+            if (EVP_PKEY_sign(ctx, reinterpret_cast<unsigned char *>(sig.data()), &len,
+                              reinterpret_cast<const unsigned char *>(digest.constData()), 32) == 1) {
+                sig.resize(qsizetype(len));
+            } else {
+                sig.clear();
+            }
+        }
+        EVP_PKEY_CTX_free(ctx);
+        EVP_PKEY_free(pkey);
+        if (sig.isEmpty()) {
+            return std::nullopt;
+        }
+        return sig;
+    }
+
+private:
+    QHash<QByteArray, SecretBytes> m_keys;
 };
 
 // Synchronously runs one request; returns status byte + CBOR.
