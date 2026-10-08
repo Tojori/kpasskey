@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# DEVELOPMENT ONLY (kpasskeyd --direct-uhid). Gives the user of the *active* local session an ACL on
+# /dev/uhid (systemd "uaccess", applied by 73-seat-late.rules), so that
+# kpasskeyd can create its virtual FIDO HID device. The ACL moves with the
+# foreground session and is removed on logout/user switch.
+#
+# SECURITY WARNING: /dev/uhid can create ANY HID device, including keyboards
+# and mice. Every unsandboxed process of the active user can therefore inject
+# input into the session. Production builds replace this with a small
+# privileged helper that can only create the fixed FIDO device
+# (docs/roadmap.md, phase 2). Do not ship this rule in distribution packages.
+KERNEL=="uhid", SUBSYSTEM=="misc", TAG+="uaccess"

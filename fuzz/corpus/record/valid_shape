@@ -1,0 +1,2 @@
+example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+{"schema":1,"type":"webauthn.public-key","credential_id":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","rp_id":"example.com","user_handle":"dQ","alg":-7,"public_key_cose":"oA","private_key":{"format":"pkcs8-der","protection":"kwallet","data":"MA"},"sign_count":1}

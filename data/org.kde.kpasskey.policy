@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- SPDX-License-Identifier: LGPL-2.1-or-later -->
+<policyconfig>
+  <vendor>KDE Passkey (prototype)</vendor>
+  <action id="org.kde.kpasskey.verify-user">
+    <description>Verify your identity for a passkey</description>
+    <message>Confirm your identity to use a passkey stored in KWallet</message>
+    <icon_name>dialog-password</icon_name>
+    <!--
+      auth_self (NOT auth_self_keep): every ceremony needs a fresh
+      authentication, nothing is cached. All three contexts require it, so a
+      daemon running outside a logind session scope still fails closed.
+      Admins can weaken this with polkit rules; see docs/security.md.
+    -->
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

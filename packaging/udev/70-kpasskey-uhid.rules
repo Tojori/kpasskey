@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Production rule: only the system user/group "kpasskey-uhid" (used solely by
+# kpasskey-uhid-helper) may open /dev/uhid. No user ACLs. Other root users of
+# uhid (e.g. bluetoothd) are unaffected.
+KERNEL=="uhid", SUBSYSTEM=="misc", GROUP="kpasskey-uhid", MODE="0660"

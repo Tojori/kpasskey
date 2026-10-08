@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+[Unit]
+Description=kpasskey virtual FIDO device helper (connection %i)
+CollectMode=inactive-or-failed
+
+[Service]
+ExecStart=@CMAKE_INSTALL_FULL_LIBEXECDIR@/kpasskey-uhid-helper
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+User=kpasskey-uhid
+Group=kpasskey-uhid
+
+# Only /dev/uhid, nothing else
+DevicePolicy=closed
+DeviceAllow=/dev/uhid rw
+ReadWritePaths=/run/kpasskey
+
+# Sandbox
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+LimitCORE=0

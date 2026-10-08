@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+[Unit]
+Description=kpasskey virtual FIDO device helper socket
+
+[Socket]
+ListenStream=/run/kpasskey/uhid.sock
+# Any local user may connect; the helper authorizes via SO_PEERCRED + logind.
+SocketMode=0666
+Accept=yes
+MaxConnections=16
+MaxConnectionsPerSource=4
+
+[Install]
+WantedBy=sockets.target

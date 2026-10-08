@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Sketch for local testing only. The package installs the uhid helper, its
+# sandboxed socket unit and the udev rule that gives /dev/uhid ONLY to the
+# system group kpasskey-uhid (docs/security.md, T15).
+pkgname=kpasskey-git
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="KWallet-backed FIDO2/passkey authenticator for KDE Plasma (prototype)"
+arch=(x86_64)
+url="https://github.com/Tojori/kpasskey"
+license=(LGPL-2.1-or-later)
+depends=(qt6-base kwallet ki18n polkit-qt6 polkit openssl systemd-libs)
+makedepends=(cmake)
+checkdepends=(python-fido2)
+source=()
+
+build() {
+  cmake -S "$startdir/../.." -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_INSTALL_LIBEXECDIR=lib
+  cmake --build build
+}
+
+check() {
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+}
